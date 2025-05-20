@@ -2,54 +2,100 @@ import Image from "next/image"
 import Link from "next/link"
 import { ProductCard, type ProductProps } from "@/components/product-card"
 import { ShoppingBag, ChevronRight } from "lucide-react"
-import { productsAPI } from "@/services/firebase-rest"
+import { safeConvertProduct } from "@/lib/product-converter"
 
 // Produtos de exemplo para fallback
-const produtosExemplo: ProductProps[] = []
+const produtosExemplo: ProductProps[] = [
+  {
+    id: 1,
+    nome: "Anel de Prata 925 com Zircônia",
+    precoOriginal: 345.0,
+    precoAtual: 199.0,
+    desconto: 42,
+    imagem: "/silver-product.png",
+    badge: "Mais Vendido",
+    promocao: true,
+    fimPromocao: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+  },
+  {
+    id: 2,
+    nome: "Brinco Argola Prata 925",
+    precoOriginal: 120.0,
+    precoAtual: 99.0,
+    desconto: 18,
+    imagem: "/joia-de-prata.png",
+    badge: "Novo",
+    promocao: true,
+  },
+  {
+    id: 3,
+    nome: "Colar Pingente Coração Prata 925",
+    precoOriginal: 85.0,
+    precoAtual: 75.0,
+    desconto: 12,
+    imagem: "/silver-product.png",
+  },
+  {
+    id: 4,
+    nome: "Pulseira Prata 925 com Zircônias",
+    precoOriginal: 150.0,
+    precoAtual: 129.0,
+    desconto: 14,
+    imagem: "/joia-de-prata.png",
+    promocao: true,
+    fimPromocao: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
+  },
+]
 
 export default async function Home() {
-  // Buscar produtos em destaque usando a API REST
+  // Buscar produtos em destaque
   let produtosDestaque: ProductProps[] = []
 
   try {
-    // Buscar produtos em promoção
-    const produtos = await productsAPI.getPromoted()
+    // Importar dinamicamente para evitar problemas de inicialização
+    const { getAllProductsAdmin } = await import("@/services/firebase-admin")
+    const produtos = await getAllProductsAdmin()
+
+    // Verificar se produtos é um array válido
+    if (!Array.isArray(produtos)) {
+      console.error("Produtos não é um array válido:", produtos)
+      throw new Error("Produtos não é um array válido")
+    }
+
+    // Filtrar produtos em promoção e limitar a 4
+    const produtosPromocao = produtos
+      .filter((p) => p && typeof p === "object" && p.promotion?.active === true)
+      .slice(0, 4)
 
     // Converter produtos para o formato correto
-    produtosDestaque = produtos.map((produto) => {
-      return {
-        id: produto.id,
-        nome: produto.name || "Produto sem nome",
-        precoOriginal: produto.originalPrice || produto.price || 0,
-        precoAtual: produto.price || 0,
-        desconto: produto.discount || 0,
-        imagem: produto.images?.[0] || "/placeholder.svg",
-        badge: produto.badge || "",
-        promocao: produto.promotion?.active || false,
-        fimPromocao: produto.promotion?.endDate ? new Date(produto.promotion.endDate) : undefined,
-      }
-    })
-
-    // Se não houver produtos em promoção, buscar todos os produtos
-    if (produtosDestaque.length === 0) {
-      const todosProdutos = await productsAPI.getAll()
-      produtosDestaque = todosProdutos.slice(0, 4).map((produto) => {
-        return {
-          id: produto.id,
-          nome: produto.name || "Produto sem nome",
-          precoOriginal: produto.originalPrice || produto.price || 0,
-          precoAtual: produto.price || 0,
-          desconto: produto.discount || 0,
-          imagem: produto.images?.[0] || "/placeholder.svg",
-          badge: produto.badge || "",
-          promocao: produto.promotion?.active || false,
-          fimPromocao: produto.promotion?.endDate ? new Date(produto.promotion.endDate) : undefined,
+    if (produtosPromocao.length === 0) {
+      // Se não houver produtos em promoção, usar todos os produtos
+      produtosDestaque = produtos.slice(0, 4).map((produto) => {
+        try {
+          return safeConvertProduct(produto)
+        } catch (error) {
+          console.error("Erro ao converter produto:", error, produto)
+          return produtosExemplo[0] // Usar primeiro produto exemplo como fallback
+        }
+      })
+    } else {
+      produtosDestaque = produtosPromocao.map((produto) => {
+        try {
+          return safeConvertProduct(produto)
+        } catch (error) {
+          console.error("Erro ao converter produto em promoção:", error, produto)
+          return produtosExemplo[0] // Usar primeiro produto exemplo como fallback
         }
       })
     }
   } catch (error) {
     console.error("Erro ao carregar produtos em destaque:", error)
     // Fallback para produtos de exemplo
+    produtosDestaque = produtosExemplo
+  }
+
+  // Se ainda não tiver produtos, usar os exemplos
+  if (produtosDestaque.length === 0) {
     produtosDestaque = produtosExemplo
   }
 
@@ -94,17 +140,11 @@ export default async function Home() {
           <h2 className="section-title">Produtos em Destaque</h2>
         </div>
 
-        {produtosDestaque.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 mt-12">
-            {produtosDestaque.map((produto) => (
-              <ProductCard key={produto.id} produto={produto} />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12 mt-12">
-            <p className="text-gray-500">Nenhum produto em destaque disponível no momento.</p>
-          </div>
-        )}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6 mt-12">
+          {produtosDestaque.map((produto) => (
+            <ProductCard key={produto.id} produto={produto} />
+          ))}
+        </div>
 
         <div className="flex justify-center mt-12">
           <Link

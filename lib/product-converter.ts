@@ -20,12 +20,7 @@ export function safeConvertProduct(product: any): ProductProps {
 
   try {
     // Extrair valores com segurança
-    const id =
-      typeof product.id === "string"
-        ? Number.parseInt(product.id, 10) || defaultProduct.id
-        : typeof product.id === "number"
-          ? product.id
-          : defaultProduct.id
+    const id = typeof product.id === "string" || typeof product.id === "number" ? product.id : defaultProduct.id
 
     const nome = typeof product.name === "string" ? product.name : defaultProduct.nome
 

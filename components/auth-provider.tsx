@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { onAuthChange, logoutUser } from "@/services/firebase-auth"
-import "@/lib/firebase-init"
 
 type User = {
   uid: string

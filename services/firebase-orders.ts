@@ -1,344 +1,202 @@
-import { db } from "./firebase-admin"
-import { Timestamp } from "firebase-admin/firestore"
+import {
+  collection,
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+  updateDoc,
+  serverTimestamp,
+} from "firebase/firestore"
+import { db } from "./firebase-config"
+import { updateProduct, getProduct } from "./firebase"
 
-// Tipos para pedidos
-export interface OrderItem {
-  productId: string
-  name: string
-  price: number
-  quantity: number
-  imageUrl?: string
-}
-
+// Tipo para os pedidos
 export interface Order {
-  id?: string
-  customerName: string
-  customerEmail?: string
-  customerPhone: string
-  items: OrderItem[]
-  total: number
+  id: string
+  customer: string
+  date: Date | Timestamp
+  items: {
+    id: string
+    name: string
+    price: number
+    quantity: number
+    image: string
+  }[]
+  paymentMethod: string
+  deliveryMethod: string
   status: "aguardando_pagamento" | "pagamento_aprovado" | "separando" | "enviado" | "entregue" | "cancelado"
-  paymentMethod?: string
-  shippingAddress?: string
-  createdAt: Date
-  updatedAt: Date
-  notes?: string
+  total: number
+  deliveryFee: number
+  finalTotal: number
 }
 
-// Função para adicionar um novo pedido
-export async function addOrder(orderData: Omit<Order, "id" | "createdAt" | "updatedAt">) {
+// Converter dados para o Firestore
+function convertOrderToFirestore(order: Order): any {
+  return {
+    id: order.id,
+    customer: order.customer,
+    date: order.date instanceof Date ? Timestamp.fromDate(order.date) : order.date,
+    items: order.items,
+    paymentMethod: order.paymentMethod,
+    deliveryMethod: order.deliveryMethod,
+    status: order.status,
+    total: order.total,
+    deliveryFee: order.deliveryFee,
+    finalTotal: order.finalTotal,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }
+}
+
+// Converter dados do Firestore
+function convertFirestoreToOrder(data: any): Order {
+  return {
+    id: data.id,
+    customer: data.customer,
+    date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
+    items: data.items || [],
+    paymentMethod: data.paymentMethod,
+    deliveryMethod: data.deliveryMethod,
+    status: data.status,
+    total: data.total,
+    deliveryFee: data.deliveryFee,
+    finalTotal: data.finalTotal,
+  }
+}
+
+// Adicionar um novo pedido
+export async function addOrder(order: Order): Promise<string> {
   try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return null
-    }
+    const ordersRef = collection(db, "orders")
+    const orderRef = doc(ordersRef, order.id)
 
-    const now = new Date()
+    const firestoreData = convertOrderToFirestore(order)
+    await setDoc(orderRef, firestoreData)
 
-    const orderToSave = {
-      ...orderData,
-      createdAt: Timestamp.fromDate(now),
-      updatedAt: Timestamp.fromDate(now),
-    }
-
-    const orderRef = await db.collection("orders").add(orderToSave)
-
-    return {
-      id: orderRef.id,
-      ...orderData,
-      createdAt: now,
-      updatedAt: now,
-    }
+    return order.id
   } catch (error) {
     console.error("Erro ao adicionar pedido:", error)
+    throw error
+  }
+}
+
+// Obter um pedido pelo ID
+export async function getOrder(id: string): Promise<Order | null> {
+  try {
+    const orderRef = doc(db, "orders", id)
+    const orderSnap = await getDoc(orderRef)
+
+    if (orderSnap.exists()) {
+      return convertFirestoreToOrder(orderSnap.data())
+    }
+
     return null
-  }
-}
-
-// Função para confirmar um pedido
-export async function confirmOrder(orderId: string) {
-  try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return false
-    }
-
-    const orderRef = db.collection("orders").doc(orderId)
-    const orderDoc = await orderRef.get()
-
-    if (!orderDoc.exists) {
-      console.error("Pedido não encontrado:", orderId)
-      return false
-    }
-
-    // Atualizar o status do pedido para "pagamento_aprovado"
-    await orderRef.update({
-      status: "pagamento_aprovado",
-      updatedAt: Timestamp.fromDate(new Date()),
-    })
-
-    // Atualizar o estoque dos produtos
-    const orderData = orderDoc.data()
-    if (orderData && orderData.items && Array.isArray(orderData.items)) {
-      for (const item of orderData.items) {
-        if (item.productId && item.quantity) {
-          const productRef = db.collection("products").doc(item.productId)
-          const productDoc = await productRef.get()
-
-          if (productDoc.exists) {
-            const productData = productDoc.data()
-            if (productData && typeof productData.stock === "number") {
-              const newStock = Math.max(0, productData.stock - item.quantity)
-              await productRef.update({
-                stock: newStock,
-                updatedAt: Timestamp.fromDate(new Date()),
-              })
-            }
-          }
-        }
-      }
-    }
-
-    return true
   } catch (error) {
-    console.error("Erro ao confirmar pedido:", error)
-    return false
+    console.error("Erro ao buscar pedido:", error)
+    throw error
   }
 }
 
-// Função para obter todos os pedidos
-export async function getAllOrders() {
+// Obter todos os pedidos
+export async function getAllOrders(): Promise<Order[]> {
   try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return []
-    }
-
-    const ordersRef = db.collection("orders")
-    const snapshot = await ordersRef.orderBy("createdAt", "desc").get()
+    const ordersRef = collection(db, "orders")
+    const q = query(ordersRef, orderBy("date", "desc"))
+    const ordersSnap = await getDocs(q)
 
     const orders: Order[] = []
-
-    snapshot.forEach((doc) => {
-      const data = doc.data()
-
-      orders.push({
-        id: doc.id,
-        customerName: data.customerName || "",
-        customerEmail: data.customerEmail || "",
-        customerPhone: data.customerPhone || "",
-        items: data.items || [],
-        total: data.total || 0,
-        status: data.status || "aguardando_pagamento",
-        paymentMethod: data.paymentMethod || "",
-        shippingAddress: data.shippingAddress || "",
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-        notes: data.notes || "",
-      })
+    ordersSnap.forEach((doc) => {
+      orders.push(convertFirestoreToOrder(doc.data()))
     })
 
     return orders
   } catch (error) {
-    console.error("Erro ao obter pedidos:", error)
-    return []
+    console.error("Erro ao buscar pedidos:", error)
+    throw error
   }
 }
 
-// Função para obter pedidos por status
-export async function getOrdersByStatus(status: Order["status"]) {
+// Obter pedidos por status
+export async function getOrdersByStatus(status: Order["status"]): Promise<Order[]> {
   try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return []
-    }
-
-    const ordersRef = db.collection("orders")
-    const snapshot = await ordersRef.where("status", "==", status).orderBy("createdAt", "desc").get()
+    const ordersRef = collection(db, "orders")
+    const q = query(ordersRef, where("status", "==", status), orderBy("date", "desc"))
+    const ordersSnap = await getDocs(q)
 
     const orders: Order[] = []
-
-    snapshot.forEach((doc) => {
-      const data = doc.data()
-
-      orders.push({
-        id: doc.id,
-        customerName: data.customerName || "",
-        customerEmail: data.customerEmail || "",
-        customerPhone: data.customerPhone || "",
-        items: data.items || [],
-        total: data.total || 0,
-        status: data.status || "aguardando_pagamento",
-        paymentMethod: data.paymentMethod || "",
-        shippingAddress: data.shippingAddress || "",
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-        notes: data.notes || "",
-      })
+    ordersSnap.forEach((doc) => {
+      orders.push(convertFirestoreToOrder(doc.data()))
     })
 
     return orders
   } catch (error) {
-    console.error("Erro ao obter pedidos por status:", error)
-    return []
+    console.error("Erro ao buscar pedidos por status:", error)
+    throw error
   }
 }
 
-// Função para obter um pedido específico
-export async function getOrderById(id: string) {
+// Atualizar status do pedido
+export async function updateOrderStatus(id: string, status: Order["status"]): Promise<void> {
   try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return null
-    }
-
-    const orderRef = db.collection("orders").doc(id)
-    const doc = await orderRef.get()
-
-    if (!doc.exists) {
-      return null
-    }
-
-    const data = doc.data()
-
-    return {
-      id: doc.id,
-      customerName: data?.customerName || "",
-      customerEmail: data?.customerEmail || "",
-      customerPhone: data?.customerPhone || "",
-      items: data?.items || [],
-      total: data?.total || 0,
-      status: data?.status || "aguardando_pagamento",
-      paymentMethod: data?.paymentMethod || "",
-      shippingAddress: data?.shippingAddress || "",
-      createdAt: data?.createdAt?.toDate() || new Date(),
-      updatedAt: data?.updatedAt?.toDate() || new Date(),
-      notes: data?.notes || "",
-    }
-  } catch (error) {
-    console.error("Erro ao obter pedido:", error)
-    return null
-  }
-}
-
-// Função para atualizar um pedido
-export async function updateOrder(id: string, orderData: Partial<Order>) {
-  try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return false
-    }
-
-    const orderRef = db.collection("orders").doc(id)
-
-    // Remover campos que não devem ser atualizados diretamente
-    const { id: _, createdAt, ...dataToUpdate } = orderData
-
-    // Adicionar timestamp de atualização
-    const updateData = {
-      ...dataToUpdate,
-      updatedAt: Timestamp.fromDate(new Date()),
-    }
-
-    await orderRef.update(updateData)
-
-    return true
-  } catch (error) {
-    console.error("Erro ao atualizar pedido:", error)
-    return false
-  }
-}
-
-// Função para atualizar o status de um pedido
-export async function updateOrderStatus(id: string, status: Order["status"]) {
-  try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return false
-    }
-
-    const orderRef = db.collection("orders").doc(id)
-
-    await orderRef.update({
+    const orderRef = doc(db, "orders", id)
+    await updateDoc(orderRef, {
       status,
-      updatedAt: Timestamp.fromDate(new Date()),
+      updatedAt: serverTimestamp(),
     })
-
-    return true
   } catch (error) {
     console.error("Erro ao atualizar status do pedido:", error)
-    return false
+    throw error
   }
 }
 
-// Função para excluir um pedido
-export async function deleteOrder(id: string) {
+// Atualizar pedido
+export async function updateOrder(order: Order): Promise<void> {
   try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return false
-    }
+    const orderRef = doc(db, "orders", order.id)
+    const firestoreData = convertOrderToFirestore(order)
 
-    const orderRef = db.collection("orders").doc(id)
-    await orderRef.delete()
+    // Não sobrescrever createdAt
+    delete firestoreData.createdAt
 
-    return true
+    await updateDoc(orderRef, {
+      ...firestoreData,
+      updatedAt: serverTimestamp(),
+    })
   } catch (error) {
-    console.error("Erro ao excluir pedido:", error)
-    return false
+    console.error("Erro ao atualizar pedido:", error)
+    throw error
   }
 }
 
-// Função para atualizar o estoque após confirmação de pedido
-export async function updateProductStockAfterOrder(orderId: string) {
+// Confirmar pedido e baixar estoque
+export async function confirmOrder(id: string): Promise<void> {
   try {
-    if (!db) {
-      console.error("Firebase Admin não está inicializado")
-      return false
-    }
-
     // Obter o pedido
-    const order = await getOrderById(orderId)
+    const order = await getOrder(id)
     if (!order) {
-      console.error("Pedido não encontrado")
-      return false
+      throw new Error("Pedido não encontrado")
     }
 
-    // Iniciar uma transação para atualizar o estoque de forma segura
-    await db.runTransaction(async (transaction) => {
-      // Para cada item no pedido
-      for (const item of order.items) {
-        const productRef = db.collection("products").doc(item.productId)
-        const productDoc = await transaction.get(productRef)
+    // Atualizar status do pedido
+    await updateOrderStatus(id, "pagamento_aprovado")
 
-        if (!productDoc.exists) {
-          console.warn(`Produto ${item.productId} não encontrado`)
-          continue
-        }
-
-        const productData = productDoc.data()
-        const currentStock = productData?.stock || 0
-
-        // Verificar se há estoque suficiente
-        if (currentStock < item.quantity) {
-          console.warn(`Estoque insuficiente para o produto ${item.productId}`)
-          continue
-        }
-
-        // Atualizar o estoque
-        transaction.update(productRef, {
-          stock: currentStock - item.quantity,
-          updatedAt: Timestamp.fromDate(new Date()),
+    // Baixar estoque para cada item
+    for (const item of order.items) {
+      const product = await getProduct(item.id)
+      if (product) {
+        const newStock = Math.max(0, product.stock - item.quantity)
+        await updateProduct(item.id, {
+          ...product,
+          stock: newStock,
         })
       }
-    })
-
-    // Atualizar o status do pedido para "pagamento_aprovado"
-    await updateOrderStatus(orderId, "pagamento_aprovado")
-
-    return true
+    }
   } catch (error) {
-    console.error("Erro ao atualizar estoque após pedido:", error)
-    return false
+    console.error("Erro ao confirmar pedido:", error)
+    throw error
   }
 }

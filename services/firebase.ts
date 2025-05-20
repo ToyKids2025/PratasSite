@@ -119,27 +119,99 @@ export function sanitizeData(data: any): any {
 
 // Convert Firestore data to our Product type
 export function convertFirestoreProduct(id: string, data: any): Product {
+  // Verificar se data é um objeto válido
+  if (!data || typeof data !== "object") {
+    console.warn("Dados inválidos recebidos em convertFirestoreProduct:", data)
+    return {
+      id,
+      name: "",
+      originalPrice: 0,
+      currentPrice: 0,
+      description: "",
+      images: [],
+      category: "",
+      features: [],
+      stock: 0,
+      promotion: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  // Processar datas com segurança
+  let createdAt = new Date()
+  let updatedAt = new Date()
+
+  try {
+    if (data.createdAt) {
+      if (data.createdAt instanceof Date) {
+        createdAt = data.createdAt
+      } else if (data.createdAt.toDate && typeof data.createdAt.toDate === "function") {
+        createdAt = data.createdAt.toDate()
+      } else if (data.createdAt._seconds) {
+        createdAt = new Date(data.createdAt._seconds * 1000)
+      } else if (typeof data.createdAt === "string") {
+        createdAt = new Date(data.createdAt)
+      }
+    }
+
+    if (data.updatedAt) {
+      if (data.updatedAt instanceof Date) {
+        updatedAt = data.updatedAt
+      } else if (data.updatedAt.toDate && typeof data.updatedAt.toDate === "function") {
+        updatedAt = data.updatedAt.toDate()
+      } else if (data.updatedAt._seconds) {
+        updatedAt = new Date(data.updatedAt._seconds * 1000)
+      } else if (typeof data.updatedAt === "string") {
+        updatedAt = new Date(data.updatedAt)
+      }
+    }
+  } catch (error) {
+    console.error("Erro ao processar datas:", error)
+  }
+
+  // Processar promoção com segurança
+  let promotion = null
+  if (data.promotion && typeof data.promotion === "object") {
+    let endDate = null
+    try {
+      if (data.promotion.endDate) {
+        if (data.promotion.endDate instanceof Date) {
+          endDate = data.promotion.endDate
+        } else if (data.promotion.endDate.toDate && typeof data.promotion.endDate.toDate === "function") {
+          endDate = data.promotion.endDate.toDate()
+        } else if (data.promotion.endDate._seconds) {
+          endDate = new Date(data.promotion.endDate._seconds * 1000)
+        } else if (typeof data.promotion.endDate === "string") {
+          endDate = new Date(data.promotion.endDate)
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao processar data de promoção:", error)
+    }
+
+    promotion = {
+      active: Boolean(data.promotion.active),
+      endDate,
+      discountPercentage: typeof data.promotion.discountPercentage === "number" ? data.promotion.discountPercentage : 0,
+      badge: typeof data.promotion.badge === "string" ? data.promotion.badge : null,
+      type: typeof data.promotion.type === "string" ? data.promotion.type : null,
+    }
+  }
+
   return {
     id,
-    name: data.name || "",
-    originalPrice: data.originalPrice || 0,
-    currentPrice: data.currentPrice || 0,
-    description: data.description || "",
-    images: data.images || [],
-    category: data.category || "",
-    features: data.features || [],
-    stock: data.stock || 0,
-    promotion: data.promotion
-      ? {
-          active: data.promotion.active || false,
-          endDate: data.promotion.endDate ? data.promotion.endDate.toDate() : null,
-          discountPercentage: data.promotion.discountPercentage || 0,
-          badge: data.promotion.badge || null,
-          type: data.promotion.type || null,
-        }
-      : null,
-    createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
-    updatedAt: data.updatedAt ? data.updatedAt.toDate() : new Date(),
+    name: typeof data.name === "string" ? data.name : "",
+    originalPrice: typeof data.originalPrice === "number" ? data.originalPrice : 0,
+    currentPrice: typeof data.currentPrice === "number" ? data.currentPrice : 0,
+    description: typeof data.description === "string" ? data.description : "",
+    images: Array.isArray(data.images) ? data.images : [],
+    category: typeof data.category === "string" ? data.category : "",
+    features: Array.isArray(data.features) ? data.features : [],
+    stock: typeof data.stock === "number" ? data.stock : 0,
+    promotion,
+    createdAt,
+    updatedAt,
   }
 }
 
@@ -267,8 +339,7 @@ export async function getAllProducts(): Promise<Product[]> {
     return products
   } catch (error) {
     console.error("Error getting all products:", error)
-    // Retornar array vazio em caso de erro, em vez de lançar exceção
-    return []
+    throw error
   }
 }
 
@@ -305,8 +376,7 @@ export async function getPromotedProducts(limit = 8): Promise<Product[]> {
     return products.slice(0, limit)
   } catch (error) {
     console.error("Error getting promoted products:", error)
-    // Retornar array vazio em caso de erro, em vez de lançar exceção
-    return []
+    throw error
   }
 }
 

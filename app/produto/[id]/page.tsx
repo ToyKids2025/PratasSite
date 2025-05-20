@@ -8,60 +8,67 @@ import { CountdownTimer } from "@/components/countdown-timer"
 import { AddToCartButton } from "@/components/add-to-cart-button"
 
 const useFallbackData = (params: { id: string }) => {
+  // Simulação de dados do produto
   return {
     id: params.id,
-    nome: "Produto não encontrado",
-    precoOriginal: 0,
-    precoAtual: 0,
-    desconto: 0,
-    imagem: "/placeholder.svg",
-    descricao: "Este produto não está disponível no momento.",
-    caracteristicas: ["Produto não encontrado"],
-    promocao: false,
-    fimPromocao: new Date(),
-    avaliacao: 0,
-    numAvaliacoes: 0,
+    nome: params.id === "1" ? "Anel de Prata 925 com Zircônia" : "Produto de Prata",
+    precoOriginal: 345.0,
+    precoAtual: 199.0,
+    desconto: 42,
+    imagem: "/silver-product.png",
+    descricao:
+      "Este é um produto de alta qualidade feito em prata 925. Perfeito para ocasiões especiais ou para uso diário. O design exclusivo e o acabamento impecável garantem um visual elegante e sofisticado.",
+    caracteristicas: ["Material: Prata 925", "Acabamento de alta qualidade", "Design exclusivo", "Garantia de 6 meses"],
+    promocao: true,
+    fimPromocao: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // 2 dias
+    avaliacao: 4.5,
+    numAvaliacoes: 28,
   }
 }
 
 export default function ProdutoDetalhe({ params }: { params: { id: string } }) {
-  const [produto, setProduto] = useState<any>(useFallbackData(params))
+  const [produto, setProduto] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchProduto = async () => {
-    try {
-      const response = await fetch(`/api/products/${params.id}`)
-      if (response.ok) {
-        const data = await response.json()
-        setProduto({
-          id: data.id,
-          nome: data.name,
-          precoOriginal: data.originalPrice,
-          precoAtual: data.currentPrice,
-          desconto:
-            data.promotion?.discountPercentage ||
-            Math.round(((data.originalPrice - data.currentPrice) / data.originalPrice) * 100),
-          imagem: data.images[0] || "/silver-product.png",
-          descricao: data.description,
-          caracteristicas: data.features,
-          promocao: data.promotion?.active || false,
-          fimPromocao: data.promotion?.endDate
-            ? new Date(data.promotion.endDate)
-            : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-          avaliacao: data.rating || 4.5,
-          numAvaliacoes: data.reviewCount || 28,
-        })
-      }
-    } catch (error) {
-      console.error("Erro ao buscar produto:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
+    // Tentar buscar o produto da API
+    const fetchProduto = async () => {
+      try {
+        const response = await fetch(`/api/products/${params.id}`)
+        if (response.ok) {
+          const data = await response.json()
+          setProduto({
+            id: data.id,
+            nome: data.name,
+            precoOriginal: data.originalPrice,
+            precoAtual: data.currentPrice,
+            desconto:
+              data.promotion?.discountPercentage ||
+              Math.round(((data.originalPrice - data.currentPrice) / data.originalPrice) * 100),
+            imagem: data.images[0] || "/silver-product.png",
+            descricao: data.description,
+            caracteristicas: data.features,
+            promocao: data.promotion?.active || false,
+            fimPromocao: data.promotion?.endDate
+              ? new Date(data.promotion.endDate)
+              : new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+            avaliacao: 4.5,
+            numAvaliacoes: 28,
+          })
+        } else {
+          // Fallback para dados simulados
+          setProduto(useFallbackData(params))
+        }
+      } catch (error) {
+        console.error("Erro ao buscar produto:", error)
+        setProduto(useFallbackData(params))
+      } finally {
+        setLoading(false)
+      }
+    }
+
     fetchProduto()
-  }, [params])
+  }, [params]) // Updated to use the entire params object
 
   if (loading) {
     return (
