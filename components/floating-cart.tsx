@@ -227,7 +227,7 @@ export function FloatingCart() {
     if (items.length === 0) return ""
 
     // Número da loja atualizado
-    const storePhone = "5549996824477"
+    const storePhone = "5549999682447"
 
     // Gerar ID do pedido baseado no nome do cliente e timestamp
     const orderId = `${orderData.customerName.split(" ")[0]}-${Date.now().toString().slice(-6)}`
