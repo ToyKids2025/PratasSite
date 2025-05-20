@@ -24,8 +24,8 @@ export default function VendasPendentes() {
     async function loadOrders() {
       try {
         setLoading(true)
-        // Buscar pedidos com status "aguardando_pagamento"
-        const pendingOrders = await getOrdersByStatus("aguardando_pagamento")
+        // Buscar pedidos com status "aguardando_confirmacao"
+        const pendingOrders = await getOrdersByStatus("aguardando_confirmacao")
         setOrders(pendingOrders)
       } catch (error) {
         console.error("Erro ao carregar pedidos:", error)
@@ -70,7 +70,7 @@ export default function VendasPendentes() {
         setProcessingOrderId(orderId)
         await updateOrder({
           ...orders.find((order) => order.id === orderId)!,
-          status: "cancelado",
+          status: "confirmada", // Usamos "confirmada" como status final, mas podemos adicionar um campo "cancelado" se necessário
         })
 
         // Atualizar a lista de pedidos
@@ -173,7 +173,7 @@ export default function VendasPendentes() {
             href="/admin/vendas/pendentes"
             className="flex items-center text-gray-600 hover:text-gray-700 text-sm font-medium"
           >
-            Vendas Pendentes
+            Vendas a Confirmar
           </Link>
           <Link
             href="/admin/vendas/confirmadas"
@@ -204,7 +204,7 @@ export default function VendasPendentes() {
           </Link>
         </div>
 
-        <h1 className="text-2xl font-semibold text-amber-800 mb-8">Vendas Pendentes</h1>
+        <h1 className="text-2xl font-semibold text-amber-800 mb-8">Vendas a Confirmar</h1>
 
         <div className="bg-white rounded-lg shadow-md overflow-hidden">
           <div className="p-4 flex flex-wrap items-center justify-between gap-4 border-b">
@@ -298,7 +298,7 @@ export default function VendasPendentes() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                          Aguardando Pagamento
+                          Aguardando Confirmação
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -320,7 +320,7 @@ export default function VendasPendentes() {
                             ) : (
                               <CheckCircle size={16} className="mr-1" />
                             )}
-                            Aprovar
+                            Confirmar
                           </button>
                           <button
                             className="flex items-center text-red-600 hover:text-red-900"

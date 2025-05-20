@@ -209,6 +209,7 @@ export function FloatingCart() {
     deliveryMethod: false,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [whatsappUrl, setWhatsappUrl] = useState("")
 
   // Formatar preço
   const formatPrice = (price: number) => {
@@ -228,14 +229,11 @@ export function FloatingCart() {
   }
 
   // Gerar mensagem para WhatsApp
-  const generateWhatsAppMessage = () => {
+  const generateWhatsAppMessage = (orderId: string) => {
     if (items.length === 0) return ""
 
-    // Número da loja atualizado
+    // Número da loja atualizado - CORRIGIDO: remover espaços e caracteres especiais
     const storePhone = "554996824477"
-
-    // Gerar ID do pedido baseado no nome do cliente e timestamp
-    const orderId = `${orderData.customerName.split(" ")[0]}-${Date.now().toString().slice(-6)}`
 
     let message = `*NOVO PEDIDO #${orderId}*\n\n`
     message += `*Cliente:* ${orderData.customerName}\n`
@@ -318,7 +316,7 @@ export function FloatingCart() {
         })),
         paymentMethod: getPaymentMethodText(orderData.paymentMethod),
         deliveryMethod: getDeliveryMethodText(orderData.deliveryMethod),
-        status: "aguardando_pagamento",
+        status: "aguardando_confirmacao", // Simplificado para apenas dois status
         total: totalPrice,
         deliveryFee: deliveryFee,
         finalTotal: finalPrice,
@@ -327,8 +325,12 @@ export function FloatingCart() {
       // Salvar no Firestore
       await addOrder(orderDetails)
 
-      // Abrir WhatsApp
-      window.open(generateWhatsAppMessage(), "_blank")
+      // Gerar URL do WhatsApp
+      const url = generateWhatsAppMessage(orderId)
+      setWhatsappUrl(url)
+
+      // Abrir WhatsApp em uma nova janela
+      window.open(url, "_blank")
 
       // Limpar carrinho após envio bem-sucedido
       clearCart()

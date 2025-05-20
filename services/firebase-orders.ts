@@ -28,7 +28,7 @@ export interface Order {
   }[]
   paymentMethod: string
   deliveryMethod: string
-  status: "aguardando_pagamento" | "pagamento_aprovado" | "separando" | "enviado" | "entregue" | "cancelado"
+  status: "aguardando_confirmacao" | "confirmada" // Simplificado para apenas dois status
   total: number
   deliveryFee: number
   finalTotal: number
@@ -182,17 +182,25 @@ export async function confirmOrder(id: string): Promise<void> {
     }
 
     // Atualizar status do pedido
-    await updateOrderStatus(id, "pagamento_aprovado")
+    await updateOrderStatus(id, "confirmada")
 
     // Baixar estoque para cada item
     for (const item of order.items) {
-      const product = await getProduct(item.id)
-      if (product) {
-        const newStock = Math.max(0, product.stock - item.quantity)
-        await updateProduct(item.id, {
-          ...product,
-          stock: newStock,
-        })
+      try {
+        const product = await getProduct(item.id)
+        if (product) {
+          const newStock = Math.max(0, product.stock - item.quantity)
+          await updateProduct(item.id, {
+            ...product,
+            stock: newStock,
+          })
+          console.log(`Estoque atualizado para o produto ${item.id}: ${product.stock} -> ${newStock}`)
+        } else {
+          console.warn(`Produto não encontrado: ${item.id}`)
+        }
+      } catch (itemError) {
+        console.error(`Erro ao atualizar estoque do item ${item.id}:`, itemError)
+        // Continuar com os próximos itens mesmo se houver erro
       }
     }
   } catch (error) {
