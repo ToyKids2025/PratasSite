@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 40 30% 98%;
+    --foreground: 30 30% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 30 30% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 30% 20%;
+    --primary: 30 60% 30%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 30 20% 90%;
+    --secondary-foreground: 30 30% 20%;
+    --muted: 30 20% 90%;
+    --muted-foreground: 30 10% 40%;
+    --accent: 30 20% 90%;
+    --accent-foreground: 30 30% 20%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 30 30% 80%;
+    --input: 30 30% 80%;
+    --ring: 30 60% 30%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    background-image: radial-gradient(circle at top right, rgba(255, 215, 0, 0.05), rgba(255, 255, 255, 0) 60%);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .promo-badge {
+    @apply absolute top-0 right-0 bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-bold px-3 py-1 rounded-bl-lg rounded-tr-lg shadow-md transform -translate-y-0 translate-x-0 z-10;
+  }
+
+  .discount-badge {
+    @apply absolute top-2 left-2 bg-gradient-to-r from-red-500 to-red-600 text-white text-xs font-bold px-2 py-1 rounded-full shadow-md z-10;
+  }
+
+  .product-card {
+    @apply border border-amber-100 rounded-2xl overflow-hidden bg-white shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-1;
+  }
+
+  .btn-primary {
+    @apply px-5 py-2 bg-gradient-to-r from-amber-700 to-amber-800 text-white rounded-full hover:from-amber-600 hover:to-amber-700 transition-all duration-300 shadow-sm hover:shadow;
+  }
+
+  .btn-secondary {
+    @apply px-5 py-2 bg-white border border-amber-700 text-amber-800 rounded-full hover:bg-amber-50 transition-all duration-300;
+  }
+
+  .btn-add {
+    @apply px-3 py-1 bg-gradient-to-r from-red-500 to-red-600 text-white text-sm rounded-full hover:from-red-600 hover:to-red-700 transition-all duration-300 shadow-sm hover:shadow flex items-center justify-center;
+  }
+}
+
+.section-title {
+  @apply text-xl sm:text-2xl font-semibold text-amber-800 mb-6 sm:mb-8 text-center relative;
+}
+
+.section-title::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 3px;
+  background: linear-gradient(to right, #b45309, #d97706);
+  border-radius: 3px;
+}
