@@ -5,9 +5,14 @@ export async function generateFirebaseRules() {
     // Usar a variável de ambiente no servidor, não exposta ao cliente
     const apiKey = process.env.BACKUP_API_KEY || ""
 
-    const response = await fetch(
-      `${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : ""}/api/firebase-rules/update?key=${apiKey}`,
-    )
+    // Construir a URL base
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : "http://localhost:3000"
+
+    const response = await fetch(`${baseUrl}/api/firebase-rules/update?key=${apiKey}`)
 
     if (!response.ok) {
       const errorData = await response.json()

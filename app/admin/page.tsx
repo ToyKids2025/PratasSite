@@ -61,10 +61,10 @@ export default function AdminDashboard() {
                 Adicionar Produto
               </Link>
               <Link
-                href="/admin/configurar-firebase"
-                className="block w-full py-2 bg-blue-600 text-white text-center rounded-md hover:bg-blue-700 transition-colors"
+                href="/admin/firebase-setup"
+                className="block w-full py-2 bg-red-600 text-white text-center rounded-md hover:bg-red-700 transition-colors"
               >
-                Configurar Permissões do Firebase
+                Resolver Erro de Permissões
               </Link>
               <Link
                 href="/admin/vendas/pendentes"

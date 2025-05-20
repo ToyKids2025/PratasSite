@@ -70,7 +70,13 @@ export function convertFirestoreProduct(id: string, data: any) {
     let createdAt = new Date()
     if (data.createdAt) {
       try {
-        createdAt = data.createdAt.toDate ? data.createdAt.toDate() : new Date(data.createdAt)
+        if (data.createdAt.toDate && typeof data.createdAt.toDate === "function") {
+          createdAt = data.createdAt.toDate()
+        } else if (data.createdAt._seconds) {
+          createdAt = new Date(data.createdAt._seconds * 1000)
+        } else {
+          createdAt = new Date(data.createdAt)
+        }
       } catch (e) {
         console.error("Error converting createdAt:", e)
       }
@@ -79,7 +85,13 @@ export function convertFirestoreProduct(id: string, data: any) {
     let updatedAt = new Date()
     if (data.updatedAt) {
       try {
-        updatedAt = data.updatedAt.toDate ? data.updatedAt.toDate() : new Date(data.updatedAt)
+        if (data.updatedAt.toDate && typeof data.updatedAt.toDate === "function") {
+          updatedAt = data.updatedAt.toDate()
+        } else if (data.updatedAt._seconds) {
+          updatedAt = new Date(data.updatedAt._seconds * 1000)
+        } else {
+          updatedAt = new Date(data.updatedAt)
+        }
       } catch (e) {
         console.error("Error converting updatedAt:", e)
       }
@@ -91,7 +103,13 @@ export function convertFirestoreProduct(id: string, data: any) {
       let endDate = null
       if (data.promotion.endDate) {
         try {
-          endDate = data.promotion.endDate.toDate ? data.promotion.endDate.toDate() : new Date(data.promotion.endDate)
+          if (data.promotion.endDate.toDate && typeof data.promotion.endDate.toDate === "function") {
+            endDate = data.promotion.endDate.toDate()
+          } else if (data.promotion.endDate._seconds) {
+            endDate = new Date(data.promotion.endDate._seconds * 1000)
+          } else {
+            endDate = new Date(data.promotion.endDate)
+          }
         } catch (e) {
           console.error("Error converting promotion endDate:", e)
         }
@@ -215,25 +233,9 @@ export async function getAllProductsAdmin() {
 
         const data = doc.data()
 
-        // Converter explicitamente todos os timestamps para strings ISO
-        const safeData = JSON.parse(
-          JSON.stringify({
-            ...data,
-            createdAt: data.createdAt ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
-            updatedAt: data.updatedAt ? data.updatedAt.toDate().toISOString() : new Date().toISOString(),
-            promotion: data.promotion
-              ? {
-                  ...data.promotion,
-                  endDate: data.promotion.endDate ? data.promotion.endDate.toDate().toISOString() : null,
-                }
-              : null,
-          }),
-        )
-
-        products.push({
-          id: doc.id,
-          ...safeData,
-        })
+        // Converter o documento para um formato seguro
+        const product = convertFirestoreProduct(doc.id, data)
+        products.push(product)
       } catch (docError) {
         console.error("Error processing document:", docError)
       }

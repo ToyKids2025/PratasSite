@@ -1,42 +1,213 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { ArrowLeft, Search, Filter, CheckCircle, XCircle } from "lucide-react"
+import { ArrowLeft, Search, Filter, CheckCircle, XCircle, Edit } from "lucide-react"
+import { useAuth } from "@/components/auth-provider"
+import { useNotification } from "@/components/notification"
+import { EditOrderModal } from "@/components/edit-order-modal"
+
+// Tipo para os pedidos
+interface Order {
+  id: string
+  customer: string
+  date: string
+  items: {
+    id: string
+    name: string
+    price: number
+    quantity: number
+    image: string
+  }[]
+  paymentMethod: string
+  deliveryMethod: string
+  status: "aguardando_pagamento" | "pagamento_aprovado" | "separando" | "enviado"
+  total: number
+  deliveryFee: number
+  finalTotal: number
+}
 
 export default function VendasPendentes() {
+  const { user, loading: authLoading } = useAuth()
+  const { showNotification } = useNotification()
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null)
+
   // Dados de exemplo para vendas pendentes
   const vendasPendentes = [
     {
-      id: "PED-001",
-      cliente: "Maria Silva",
-      data: "15/05/2025",
-      valor: 299.9,
+      id: "Maria-123456",
+      customer: "Maria Silva",
+      date: "15/05/2025",
+      items: [
+        {
+          id: "1",
+          name: "Anel de Prata 925",
+          price: 99.9,
+          quantity: 2,
+          image: "/silver-product.png",
+        },
+        {
+          id: "2",
+          name: "Brinco Argola",
+          price: 100.1,
+          quantity: 1,
+          image: "/joia-de-prata.png",
+        },
+      ],
+      paymentMethod: "PIX",
+      deliveryMethod: "Retirada no local",
       status: "aguardando_pagamento",
-      itens: 3,
+      total: 299.9,
+      deliveryFee: 0,
+      finalTotal: 299.9,
     },
     {
-      id: "PED-002",
-      cliente: "João Santos",
-      data: "16/05/2025",
-      valor: 150.5,
+      id: "Joao-654321",
+      customer: "João Santos",
+      date: "16/05/2025",
+      items: [
+        {
+          id: "3",
+          name: "Pulseira com Zircônia",
+          price: 150.5,
+          quantity: 1,
+          image: "/silver-product.png",
+        },
+      ],
+      paymentMethod: "Cartão de crédito",
+      deliveryMethod: "Entrega local em Seara - SC",
       status: "pagamento_aprovado",
-      itens: 1,
+      total: 150.5,
+      deliveryFee: 10,
+      finalTotal: 160.5,
     },
     {
-      id: "PED-003",
-      cliente: "Ana Oliveira",
-      data: "16/05/2025",
-      valor: 450.0,
+      id: "Ana-789012",
+      customer: "Ana Oliveira",
+      date: "16/05/2025",
+      items: [
+        {
+          id: "4",
+          name: "Colar Pingente Coração",
+          price: 112.5,
+          quantity: 4,
+          image: "/joia-de-prata.png",
+        },
+      ],
+      paymentMethod: "Dinheiro",
+      deliveryMethod: "Retirada no local",
       status: "separando",
-      itens: 4,
+      total: 450.0,
+      deliveryFee: 0,
+      finalTotal: 450.0,
     },
     {
-      id: "PED-004",
-      cliente: "Carlos Pereira",
-      data: "17/05/2025",
-      valor: 199.9,
+      id: "Carlos-345678",
+      customer: "Carlos Pereira",
+      date: "17/05/2025",
+      items: [
+        {
+          id: "5",
+          name: "Tornozeleira Prata 925",
+          price: 99.95,
+          quantity: 2,
+          image: "/silver-product.png",
+        },
+      ],
+      paymentMethod: "Cartão de débito",
+      deliveryMethod: "Entrega local em Seara - SC",
       status: "enviado",
-      itens: 2,
+      total: 199.9,
+      deliveryFee: 10,
+      finalTotal: 209.9,
     },
   ]
+
+  useEffect(() => {
+    // Aqui você carregaria os pedidos do Firebase
+    // Por enquanto, vamos usar os dados de exemplo
+    setOrders(vendasPendentes)
+    setLoading(false)
+  }, [])
+
+  const handleConfirmOrder = (orderId: string) => {
+    // Aqui você atualizaria o status do pedido no Firebase
+    // e reduziria o estoque dos produtos
+
+    setOrders((prevOrders) =>
+      prevOrders.map((order) => (order.id === orderId ? { ...order, status: "pagamento_aprovado" as const } : order)),
+    )
+
+    showNotification("Pedido confirmado com sucesso!", "success")
+  }
+
+  const handleCancelOrder = (orderId: string) => {
+    if (window.confirm("Tem certeza que deseja cancelar este pedido?")) {
+      // Aqui você cancelaria o pedido no Firebase
+
+      setOrders((prevOrders) => prevOrders.filter((order) => order.id !== orderId))
+
+      showNotification("Pedido cancelado com sucesso!", "success")
+    }
+  }
+
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order)
+  }
+
+  const handleSaveOrder = (updatedOrder: Order) => {
+    setOrders((prevOrders) => prevOrders.map((order) => (order.id === updatedOrder.id ? updatedOrder : order)))
+
+    showNotification("Pedido atualizado com sucesso!", "success")
+  }
+
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case "aguardando_pagamento":
+        return "bg-yellow-100 text-yellow-800"
+      case "pagamento_aprovado":
+        return "bg-green-100 text-green-800"
+      case "separando":
+        return "bg-blue-100 text-blue-800"
+      case "enviado":
+        return "bg-purple-100 text-purple-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case "aguardando_pagamento":
+        return "Aguardando Pagamento"
+      case "pagamento_aprovado":
+        return "Pagamento Aprovado"
+      case "separando":
+        return "Separando"
+      case "enviado":
+        return "Enviado"
+      default:
+        return status
+    }
+  }
+
+  // Formatar preço
+  const formatPrice = (price: number) => {
+    return price.toFixed(2).replace(".", ",")
+  }
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-800"></div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-amber-50/50">
@@ -166,52 +337,51 @@ export default function VendasPendentes() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {vendasPendentes.map((venda) => (
-                  <tr key={venda.id}>
+                {orders.map((order) => (
+                  <tr key={order.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-blue-600">{venda.id}</div>
-                      <div className="text-xs text-gray-500">{venda.itens} itens</div>
+                      <div className="text-sm font-medium text-blue-600">#{order.id}</div>
+                      <div className="text-xs text-gray-500">{order.items.length} itens</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{venda.cliente}</div>
+                      <div className="text-sm text-gray-900">{order.customer}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-500">{venda.data}</div>
+                      <div className="text-sm text-gray-500">{order.date}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        R$ {venda.valor.toFixed(2).replace(".", ",")}
-                      </div>
+                      <div className="text-sm font-medium text-gray-900">R$ {formatPrice(order.finalTotal)}</div>
+                      {order.deliveryFee > 0 && (
+                        <div className="text-xs text-gray-500">(Entrega: R$ {formatPrice(order.deliveryFee)})</div>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
-                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          venda.status === "aguardando_pagamento"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : venda.status === "pagamento_aprovado"
-                              ? "bg-green-100 text-green-800"
-                              : venda.status === "separando"
-                                ? "bg-blue-100 text-blue-800"
-                                : "bg-purple-100 text-purple-800"
-                        }`}
+                        className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(order.status)}`}
                       >
-                        {venda.status === "aguardando_pagamento"
-                          ? "Aguardando Pagamento"
-                          : venda.status === "pagamento_aprovado"
-                            ? "Pagamento Aprovado"
-                            : venda.status === "separando"
-                              ? "Separando"
-                              : "Enviado"}
+                        {getStatusText(order.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        <button className="text-blue-600 hover:text-blue-900">Detalhes</button>
-                        <button className="flex items-center text-green-600 hover:text-green-900">
+                        <button
+                          className="flex items-center text-blue-600 hover:text-blue-900"
+                          onClick={() => handleEditOrder(order)}
+                        >
+                          <Edit size={16} className="mr-1" />
+                          Editar
+                        </button>
+                        <button
+                          className="flex items-center text-green-600 hover:text-green-900"
+                          onClick={() => handleConfirmOrder(order.id)}
+                        >
                           <CheckCircle size={16} className="mr-1" />
                           Aprovar
                         </button>
-                        <button className="flex items-center text-red-600 hover:text-red-900">
+                        <button
+                          className="flex items-center text-red-600 hover:text-red-900"
+                          onClick={() => handleCancelOrder(order.id)}
+                        >
                           <XCircle size={16} className="mr-1" />
                           Cancelar
                         </button>
@@ -223,6 +393,9 @@ export default function VendasPendentes() {
             </table>
           </div>
         </div>
+        {editingOrder && (
+          <EditOrderModal order={editingOrder} onClose={() => setEditingOrder(null)} onSave={handleSaveOrder} />
+        )}
       </div>
     </div>
   )

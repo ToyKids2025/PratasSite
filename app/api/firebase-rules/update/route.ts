@@ -1,28 +1,6 @@
 import { NextResponse } from "next/server"
-import admin from "firebase-admin"
 
-// Inicializar o Firebase Admin se ainda não estiver inicializado
-let app: admin.app.App
-if (!admin.apps.length) {
-  try {
-    const privateKey = process.env.FIREBASE_PRIVATE_KEY
-      ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
-      : undefined
-
-    app = admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: privateKey,
-      }),
-    })
-  } catch (error) {
-    console.error("Error initializing Firebase Admin:", error)
-    throw error
-  }
-}
-
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
     // Verificar autenticação (em um ambiente real, você usaria um token de API)
     const { searchParams } = new URL(request.url)
@@ -32,30 +10,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Atualizar regras do Firestore
+    // Regras do Firestore que permitem acesso total (apenas para desenvolvimento)
     const firestoreRules = `
     rules_version = '2';
     service cloud.firestore {
       match /databases/{database}/documents {
-        // Permitir acesso de leitura e escrita a todos os produtos
-        match /products/{productId} {
-          allow read, write: if true;
-        }
-        
-        // Permitir acesso aos backups
-        match /backups/{backupId} {
+        // Permitir acesso total a todos os documentos (APENAS PARA DESENVOLVIMENTO)
+        match /{document=**} {
           allow read, write: if true;
         }
       }
     }
     `
 
-    // Atualizar regras do Storage
+    // Regras do Storage que permitem acesso total (apenas para desenvolvimento)
     const storageRules = `
     rules_version = '2';
     service firebase.storage {
       match /b/{bucket}/o {
-        // Permitir acesso de leitura e escrita a todos os arquivos
+        // Permitir acesso total a todos os arquivos (APENAS PARA DESENVOLVIMENTO)
         match /{allPaths=**} {
           allow read, write: if true;
         }
@@ -63,8 +36,6 @@ export async function POST(request: Request) {
     }
     `
 
-    // Em um ambiente real, você usaria a API do Firebase para atualizar as regras
-    // Aqui, apenas retornamos as regras para que você possa copiá-las e aplicá-las manualmente
     return NextResponse.json({
       success: true,
       message: "Regras geradas com sucesso. Copie e aplique-as no console do Firebase.",

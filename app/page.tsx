@@ -65,13 +65,17 @@ export default async function Home() {
     const produtosPromocao = produtos
       .filter((p) => p && typeof p === "object" && p.promotion?.active === true)
       .slice(0, 4)
-      .map(safeConvertProduct)
 
-    // Se não houver produtos em promoção, usar todos os produtos
+    // Converter produtos para o formato correto
     if (produtosPromocao.length === 0) {
-      produtosDestaque = produtos.slice(0, 4).map(safeConvertProduct)
+      // Se não houver produtos em promoção, usar todos os produtos
+      produtosDestaque = produtos.slice(0, 4).map((produto) => {
+        return safeConvertProduct(produto)
+      })
     } else {
-      produtosDestaque = produtosPromocao
+      produtosDestaque = produtosPromocao.map((produto) => {
+        return safeConvertProduct(produto)
+      })
     }
   } catch (error) {
     console.error("Erro ao carregar produtos em destaque:", error)

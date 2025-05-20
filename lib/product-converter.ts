@@ -30,9 +30,18 @@ export function safeConvertProduct(product: any): ProductProps {
     const nome = typeof product.name === "string" ? product.name : defaultProduct.nome
 
     const precoOriginal =
-      typeof product.originalPrice === "number" ? product.originalPrice : defaultProduct.precoOriginal
+      typeof product.originalPrice === "number"
+        ? product.originalPrice
+        : typeof product.originalPrice === "string"
+          ? Number.parseFloat(product.originalPrice) || defaultProduct.precoOriginal
+          : defaultProduct.precoOriginal
 
-    const precoAtual = typeof product.currentPrice === "number" ? product.currentPrice : defaultProduct.precoAtual
+    const precoAtual =
+      typeof product.currentPrice === "number"
+        ? product.currentPrice
+        : typeof product.currentPrice === "string"
+          ? Number.parseFloat(product.currentPrice) || defaultProduct.precoAtual
+          : defaultProduct.precoAtual
 
     // Calcular desconto com segurança
     let desconto = defaultProduct.desconto
@@ -68,6 +77,9 @@ export function safeConvertProduct(product: any): ProductProps {
           fimPromocao = new Date(product.promotion.endDate)
         } else if (product.promotion.endDate.toDate && typeof product.promotion.endDate.toDate === "function") {
           fimPromocao = product.promotion.endDate.toDate()
+        } else if (product.promotion.endDate._seconds) {
+          // Lidar com timestamp do Firestore
+          fimPromocao = new Date(product.promotion.endDate._seconds * 1000)
         }
 
         // Verificar se a data é válida

@@ -1,7 +1,9 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, createContext, useContext, type ReactNode } from "react"
-import { ShoppingCart, X, Plus, Minus, ArrowRight } from "lucide-react"
+import { ShoppingCart, X, Plus, Minus, ArrowRight, CreditCard, Truck } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 
@@ -14,25 +16,44 @@ export interface CartItem {
   image: string
 }
 
+// Tipo para os dados do pedido
+export interface OrderData {
+  customerName: string
+  paymentMethod: "pix" | "credit" | "debit" | "cash" | ""
+  deliveryMethod: "pickup" | "local" | ""
+}
+
 // Contexto do carrinho
 interface CartContextType {
   items: CartItem[]
+  orderData: OrderData
   addItem: (item: CartItem) => void
   removeItem: (id: string) => void
   updateQuantity: (id: string, quantity: number) => void
+  updateOrderData: (data: Partial<OrderData>) => void
   clearCart: () => void
   totalItems: number
   totalPrice: number
+  deliveryFee: number
+  finalPrice: number
 }
 
 const CartContext = createContext<CartContextType>({
   items: [],
+  orderData: {
+    customerName: "",
+    paymentMethod: "",
+    deliveryMethod: "",
+  },
   addItem: () => {},
   removeItem: () => {},
   updateQuantity: () => {},
+  updateOrderData: () => {},
   clearCart: () => {},
   totalItems: 0,
   totalPrice: 0,
+  deliveryFee: 0,
+  finalPrice: 0,
 })
 
 // Hook para usar o carrinho
@@ -41,18 +62,34 @@ export const useCart = () => useContext(CartContext)
 // Provedor do carrinho
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([])
+  const [orderData, setOrderData] = useState<OrderData>({
+    customerName: "",
+    paymentMethod: "",
+    deliveryMethod: "",
+  })
   const [isClient, setIsClient] = useState(false)
 
   // Inicializar do localStorage quando o componente montar
   useEffect(() => {
     setIsClient(true)
     const savedCart = localStorage.getItem("cart")
+    const savedOrderData = localStorage.getItem("orderData")
+
     if (savedCart) {
       try {
         setItems(JSON.parse(savedCart))
       } catch (error) {
         console.error("Erro ao carregar carrinho:", error)
         localStorage.removeItem("cart")
+      }
+    }
+
+    if (savedOrderData) {
+      try {
+        setOrderData(JSON.parse(savedOrderData))
+      } catch (error) {
+        console.error("Erro ao carregar dados do pedido:", error)
+        localStorage.removeItem("orderData")
       }
     }
   }, [])
@@ -63,6 +100,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("cart", JSON.stringify(items))
     }
   }, [items, isClient])
+
+  // Salvar dados do pedido no localStorage
+  useEffect(() => {
+    if (isClient) {
+      localStorage.setItem("orderData", JSON.stringify(orderData))
+    }
+  }, [orderData, isClient])
 
   // Adicionar item ao carrinho
   const addItem = (item: CartItem) => {
@@ -93,27 +137,47 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems((prevItems) => prevItems.map((item) => (item.id === id ? { ...item, quantity } : item)))
   }
 
+  // Atualizar dados do pedido
+  const updateOrderData = (data: Partial<OrderData>) => {
+    setOrderData((prev) => ({ ...prev, ...data }))
+  }
+
   // Limpar o carrinho
   const clearCart = () => {
     setItems([])
+    setOrderData({
+      customerName: "",
+      paymentMethod: "",
+      deliveryMethod: "",
+    })
   }
 
   // Calcular total de itens
   const totalItems = items.reduce((total, item) => total + item.quantity, 0)
 
-  // Calcular preço total
+  // Calcular preço total dos produtos
   const totalPrice = items.reduce((total, item) => total + item.price * item.quantity, 0)
+
+  // Calcular taxa de entrega
+  const deliveryFee = orderData.deliveryMethod === "local" ? 10 : 0
+
+  // Calcular preço final (produtos + entrega)
+  const finalPrice = totalPrice + deliveryFee
 
   return (
     <CartContext.Provider
       value={{
         items,
+        orderData,
         addItem,
         removeItem,
         updateQuantity,
+        updateOrderData,
         clearCart,
         totalItems,
         totalPrice,
+        deliveryFee,
+        finalPrice,
       }}
     >
       {children}
@@ -123,28 +187,106 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 // Componente do carrinho flutuante
 export function FloatingCart() {
-  const { items, totalItems, totalPrice, updateQuantity, removeItem } = useCart()
+  const {
+    items,
+    orderData,
+    totalItems,
+    totalPrice,
+    deliveryFee,
+    finalPrice,
+    updateQuantity,
+    removeItem,
+    updateOrderData,
+  } = useCart()
   const [isOpen, setIsOpen] = useState(false)
+  const [formErrors, setFormErrors] = useState({
+    customerName: false,
+    paymentMethod: false,
+    deliveryMethod: false,
+  })
 
   // Formatar preço
   const formatPrice = (price: number) => {
     return price.toFixed(2).replace(".", ",")
   }
 
+  // Validar formulário
+  const validateForm = () => {
+    const errors = {
+      customerName: !orderData.customerName,
+      paymentMethod: !orderData.paymentMethod,
+      deliveryMethod: !orderData.deliveryMethod,
+    }
+
+    setFormErrors(errors)
+    return !Object.values(errors).some((error) => error)
+  }
+
   // Gerar mensagem para WhatsApp
   const generateWhatsAppMessage = () => {
     if (items.length === 0) return ""
 
-    const storePhone = "5549996824477" // Número da loja sem formatação
-    let message = "Olá! Gostaria de fazer o seguinte pedido:\n\n"
+    // Número da loja atualizado
+    const storePhone = "5549996824477"
+
+    // Gerar ID do pedido baseado no nome do cliente e timestamp
+    const orderId = `${orderData.customerName.split(" ")[0]}-${Date.now().toString().slice(-6)}`
+
+    let message = `*NOVO PEDIDO #${orderId}*\n\n`
+    message += `*Cliente:* ${orderData.customerName}\n`
+    message += `*Forma de Pagamento:* ${getPaymentMethodText(orderData.paymentMethod)}\n`
+    message += `*Forma de Entrega:* ${getDeliveryMethodText(orderData.deliveryMethod)}\n\n`
+    message += "*ITENS DO PEDIDO:*\n"
 
     items.forEach((item) => {
       message += `• ${item.quantity}x ${item.name} - R$ ${formatPrice(item.price * item.quantity)}\n`
     })
 
-    message += `\nTotal: R$ ${formatPrice(totalPrice)}\n\nPor favor, confirme a disponibilidade e o prazo de entrega.`
+    message += `\n*Subtotal:* R$ ${formatPrice(totalPrice)}`
+
+    if (deliveryFee > 0) {
+      message += `\n*Taxa de entrega:* R$ ${formatPrice(deliveryFee)}`
+    }
+
+    message += `\n*Total:* R$ ${formatPrice(finalPrice)}\n\n`
 
     return `https://wa.me/${storePhone}?text=${encodeURIComponent(message)}`
+  }
+
+  // Obter texto da forma de pagamento
+  const getPaymentMethodText = (method: string) => {
+    switch (method) {
+      case "pix":
+        return "PIX"
+      case "credit":
+        return "Cartão de crédito"
+      case "debit":
+        return "Cartão de débito"
+      case "cash":
+        return "Dinheiro"
+      default:
+        return ""
+    }
+  }
+
+  // Obter texto da forma de entrega
+  const getDeliveryMethodText = (method: string) => {
+    switch (method) {
+      case "pickup":
+        return "Retirada no local"
+      case "local":
+        return "Entrega em Seara-SC (+R$10,00)"
+      default:
+        return ""
+    }
+  }
+
+  // Manipular envio do pedido
+  const handleSubmitOrder = (e: React.MouseEvent) => {
+    if (!validateForm()) {
+      e.preventDefault()
+      return
+    }
   }
 
   return (
@@ -199,52 +341,225 @@ export function FloatingCart() {
                 </Link>
               </div>
             ) : (
-              <ul className="space-y-4">
-                {items.map((item) => (
-                  <li key={item.id} className="flex border-b pb-4">
-                    <div className="w-20 h-20 flex-shrink-0 bg-gray-100 rounded overflow-hidden">
-                      <Image
-                        src={item.image || "/placeholder.svg"}
-                        alt={item.name}
-                        width={80}
-                        height={80}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="ml-4 flex-1">
-                      <h3 className="text-sm font-medium">{item.name}</h3>
-                      <p className="text-amber-700 font-semibold mt-1">R$ {formatPrice(item.price)}</p>
-                      <div className="flex items-center mt-2">
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="p-1 rounded-full border border-gray-300 hover:bg-gray-100"
-                        >
-                          <Minus size={14} />
-                        </button>
-                        <span className="mx-2 w-8 text-center">{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="p-1 rounded-full border border-gray-300 hover:bg-gray-100"
-                        >
-                          <Plus size={14} />
-                        </button>
-                        <button onClick={() => removeItem(item.id)} className="ml-auto text-red-500 hover:text-red-700">
-                          <X size={16} />
-                        </button>
+              <>
+                <ul className="space-y-4 mb-6">
+                  {items.map((item) => (
+                    <li key={item.id} className="flex border-b pb-4">
+                      <div className="w-20 h-20 flex-shrink-0 bg-gray-100 rounded overflow-hidden">
+                        <Image
+                          src={item.image || "/placeholder.svg"}
+                          alt={item.name}
+                          width={80}
+                          height={80}
+                          className="w-full h-full object-cover"
+                        />
                       </div>
+                      <div className="ml-4 flex-1">
+                        <h3 className="text-sm font-medium">{item.name}</h3>
+                        <p className="text-amber-700 font-semibold mt-1">R$ {formatPrice(item.price)}</p>
+                        <div className="flex items-center mt-2">
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            className="p-1 rounded-full border border-gray-300 hover:bg-gray-100"
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <span className="mx-2 w-8 text-center">{item.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            className="p-1 rounded-full border border-gray-300 hover:bg-gray-100"
+                          >
+                            <Plus size={14} />
+                          </button>
+                          <button
+                            onClick={() => removeItem(item.id)}
+                            className="ml-auto text-red-500 hover:text-red-700"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Formulário de dados do pedido */}
+                <div className="space-y-4 border-t pt-4">
+                  <h3 className="font-medium text-gray-700">Dados para finalização</h3>
+
+                  {/* Nome do cliente */}
+                  <div>
+                    <label htmlFor="customerName" className="block text-sm font-medium text-gray-700 mb-1">
+                      Nome completo <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="customerName"
+                      value={orderData.customerName}
+                      onChange={(e) => updateOrderData({ customerName: e.target.value })}
+                      className={`w-full px-3 py-2 border ${
+                        formErrors.customerName ? "border-red-500" : "border-gray-300"
+                      } rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500`}
+                      placeholder="Seu nome completo"
+                    />
+                    {formErrors.customerName && <p className="mt-1 text-xs text-red-500">Nome é obrigatório</p>}
+                  </div>
+
+                  {/* Forma de pagamento */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Forma de pagamento <span className="text-red-500">*</span>
+                    </label>
+                    <div
+                      className={`grid grid-cols-2 gap-2 ${formErrors.paymentMethod ? "border border-red-500 rounded-md p-1" : ""}`}
+                    >
+                      <label
+                        className={`flex items-center p-2 border rounded-md cursor-pointer ${
+                          orderData.paymentMethod === "pix" ? "bg-amber-50 border-amber-500" : "border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="pix"
+                          checked={orderData.paymentMethod === "pix"}
+                          onChange={() => updateOrderData({ paymentMethod: "pix" })}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center text-sm">
+                          <CreditCard size={16} className="mr-1" /> PIX
+                        </span>
+                      </label>
+                      <label
+                        className={`flex items-center p-2 border rounded-md cursor-pointer ${
+                          orderData.paymentMethod === "credit" ? "bg-amber-50 border-amber-500" : "border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="credit"
+                          checked={orderData.paymentMethod === "credit"}
+                          onChange={() => updateOrderData({ paymentMethod: "credit" })}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center text-sm">
+                          <CreditCard size={16} className="mr-1" /> Crédito
+                        </span>
+                      </label>
+                      <label
+                        className={`flex items-center p-2 border rounded-md cursor-pointer ${
+                          orderData.paymentMethod === "debit" ? "bg-amber-50 border-amber-500" : "border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="debit"
+                          checked={orderData.paymentMethod === "debit"}
+                          onChange={() => updateOrderData({ paymentMethod: "debit" })}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center text-sm">
+                          <CreditCard size={16} className="mr-1" /> Débito
+                        </span>
+                      </label>
+                      <label
+                        className={`flex items-center p-2 border rounded-md cursor-pointer ${
+                          orderData.paymentMethod === "cash" ? "bg-amber-50 border-amber-500" : "border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="cash"
+                          checked={orderData.paymentMethod === "cash"}
+                          onChange={() => updateOrderData({ paymentMethod: "cash" })}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center text-sm">
+                          <CreditCard size={16} className="mr-1" /> Dinheiro
+                        </span>
+                      </label>
                     </div>
-                  </li>
-                ))}
-              </ul>
+                    {formErrors.paymentMethod && (
+                      <p className="mt-1 text-xs text-red-500">Selecione uma forma de pagamento</p>
+                    )}
+                  </div>
+
+                  {/* Forma de entrega */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Forma de entrega <span className="text-red-500">*</span>
+                    </label>
+                    <div
+                      className={`space-y-2 ${formErrors.deliveryMethod ? "border border-red-500 rounded-md p-1" : ""}`}
+                    >
+                      <label
+                        className={`flex items-center p-2 border rounded-md cursor-pointer ${
+                          orderData.deliveryMethod === "pickup" ? "bg-amber-50 border-amber-500" : "border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="deliveryMethod"
+                          value="pickup"
+                          checked={orderData.deliveryMethod === "pickup"}
+                          onChange={() => updateOrderData({ deliveryMethod: "pickup" })}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center text-sm">
+                          <Truck size={16} className="mr-1" /> Retirada no local (sem custo)
+                        </span>
+                      </label>
+                      <label
+                        className={`flex items-center p-2 border rounded-md cursor-pointer ${
+                          orderData.deliveryMethod === "local" ? "bg-amber-50 border-amber-500" : "border-gray-300"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="deliveryMethod"
+                          value="local"
+                          checked={orderData.deliveryMethod === "local"}
+                          onChange={() => updateOrderData({ deliveryMethod: "local" })}
+                          className="sr-only"
+                        />
+                        <span className="flex items-center text-sm">
+                          <Truck size={16} className="mr-1" /> Entrega local em Seara - SC (+R$10,00)
+                        </span>
+                      </label>
+                    </div>
+                    {formErrors.deliveryMethod && (
+                      <p className="mt-1 text-xs text-red-500">Selecione uma forma de entrega</p>
+                    )}
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
           {/* Rodapé com total e botão de finalizar */}
           <div className="p-4 border-t bg-amber-50">
-            <div className="flex justify-between mb-4">
-              <span className="font-medium">Total</span>
-              <span className="font-bold text-amber-800">R$ {formatPrice(totalPrice)}</span>
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between">
+                <span className="text-sm">Subtotal</span>
+                <span className="text-sm font-medium">R$ {formatPrice(totalPrice)}</span>
+              </div>
+
+              {deliveryFee > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-sm">Taxa de entrega</span>
+                  <span className="text-sm font-medium">R$ {formatPrice(deliveryFee)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between pt-2 border-t border-amber-200">
+                <span className="font-medium">Total</span>
+                <span className="font-bold text-amber-800">R$ {formatPrice(finalPrice)}</span>
+              </div>
             </div>
+
             <a
               href={generateWhatsAppMessage()}
               target="_blank"
@@ -253,7 +568,7 @@ export function FloatingCart() {
                 items.length === 0 ? "bg-gray-300 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"
               } text-white font-medium transition-colors`}
               onClick={(e) => {
-                if (items.length === 0) {
+                if (items.length === 0 || !validateForm()) {
                   e.preventDefault()
                 }
               }}
