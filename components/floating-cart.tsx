@@ -6,6 +6,8 @@ import { useState, useEffect, createContext, useContext, type ReactNode } from "
 import { ShoppingCart, X, Plus, Minus, ArrowRight, CreditCard, Truck } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
+import { addOrder } from "@/services/firebase-orders"
+import { useNotification } from "@/components/notification"
 
 // Tipo para os itens do carrinho
 export interface CartItem {
@@ -197,13 +199,16 @@ export function FloatingCart() {
     updateQuantity,
     removeItem,
     updateOrderData,
+    clearCart,
   } = useCart()
+  const { showNotification } = useNotification()
   const [isOpen, setIsOpen] = useState(false)
   const [formErrors, setFormErrors] = useState({
     customerName: false,
     paymentMethod: false,
     deliveryMethod: false,
   })
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   // Formatar preço
   const formatPrice = (price: number) => {
@@ -227,7 +232,7 @@ export function FloatingCart() {
     if (items.length === 0) return ""
 
     // Número da loja atualizado
-    const storePhone = "5549999682447"
+    const storePhone = "554996824477"
 
     // Gerar ID do pedido baseado no nome do cliente e timestamp
     const orderId = `${orderData.customerName.split(" ")[0]}-${Date.now().toString().slice(-6)}`
@@ -240,6 +245,10 @@ export function FloatingCart() {
 
     items.forEach((item) => {
       message += `• ${item.quantity}x ${item.name} - R$ ${formatPrice(item.price * item.quantity)}\n`
+      // Adicionar link da imagem
+      if (item.image && item.image !== "/placeholder.svg") {
+        message += `  Imagem: ${item.image}\n`
+      }
     })
 
     message += `\n*Subtotal:* R$ ${formatPrice(totalPrice)}`
@@ -281,11 +290,56 @@ export function FloatingCart() {
     }
   }
 
-  // Manipular envio do pedido
-  const handleSubmitOrder = (e: React.MouseEvent) => {
-    if (!validateForm()) {
-      e.preventDefault()
+  // Salvar pedido no Firestore e redirecionar para WhatsApp
+  const handleSubmitOrder = async (e: React.MouseEvent) => {
+    e.preventDefault()
+
+    if (!validateForm() || items.length === 0) {
       return
+    }
+
+    try {
+      setIsSubmitting(true)
+
+      // Gerar ID do pedido
+      const orderId = `${orderData.customerName.split(" ")[0]}-${Date.now().toString().slice(-6)}`
+
+      // Preparar dados do pedido
+      const orderDetails = {
+        id: orderId,
+        customer: orderData.customerName,
+        date: new Date(),
+        items: items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          image: item.image,
+        })),
+        paymentMethod: getPaymentMethodText(orderData.paymentMethod),
+        deliveryMethod: getDeliveryMethodText(orderData.deliveryMethod),
+        status: "aguardando_pagamento",
+        total: totalPrice,
+        deliveryFee: deliveryFee,
+        finalTotal: finalPrice,
+      }
+
+      // Salvar no Firestore
+      await addOrder(orderDetails)
+
+      // Abrir WhatsApp
+      window.open(generateWhatsAppMessage(), "_blank")
+
+      // Limpar carrinho após envio bem-sucedido
+      clearCart()
+      setIsOpen(false)
+
+      showNotification("Pedido enviado com sucesso!", "success")
+    } catch (error) {
+      console.error("Erro ao enviar pedido:", error)
+      showNotification("Erro ao enviar pedido. Tente novamente.", "error")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -560,22 +614,27 @@ export function FloatingCart() {
               </div>
             </div>
 
-            <a
-              href={generateWhatsAppMessage()}
-              target="_blank"
-              rel="noopener noreferrer"
+            <button
+              onClick={handleSubmitOrder}
+              disabled={items.length === 0 || isSubmitting}
               className={`w-full py-3 flex items-center justify-center rounded-md ${
-                items.length === 0 ? "bg-gray-300 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"
+                items.length === 0 || isSubmitting
+                  ? "bg-gray-300 cursor-not-allowed"
+                  : "bg-green-600 hover:bg-green-700"
               } text-white font-medium transition-colors`}
-              onClick={(e) => {
-                if (items.length === 0 || !validateForm()) {
-                  e.preventDefault()
-                }
-              }}
             >
-              Finalizar via WhatsApp
-              <ArrowRight size={18} className="ml-2" />
-            </a>
+              {isSubmitting ? (
+                <>
+                  <span className="mr-2 h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
+                  Processando...
+                </>
+              ) : (
+                <>
+                  Finalizar via WhatsApp
+                  <ArrowRight size={18} className="ml-2" />
+                </>
+              )}
+            </button>
             <Link
               href="/produtos"
               className="mt-3 w-full py-2 flex items-center justify-center rounded-md border border-amber-700 text-amber-800 hover:bg-amber-50 font-medium transition-colors"

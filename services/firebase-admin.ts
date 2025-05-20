@@ -1,52 +1,73 @@
+// Importar a inicialização segura primeiro
+import "../lib/firebase-init"
+
 import { cert } from "firebase-admin/app"
 import { getFirestore } from "firebase-admin/firestore"
 
-// Função para inicializar o Firebase Admin SDK
-function getFirebaseAdminApp() {
-  const { initializeApp, getApps, getApp } = require("firebase-admin/app")
-
-  if (getApps().length === 0) {
-    try {
-      // Converter a chave privada de string para formato correto
-      const privateKey = process.env.FIREBASE_PRIVATE_KEY
-        ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
-        : undefined
-
-      // Verificar se as credenciais estão disponíveis
-      if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !privateKey) {
-        console.warn("Firebase Admin SDK credentials are missing. Using mock data instead.")
-        return null
-      }
-
-      // Inicializar o app
-      return initializeApp({
-        credential: cert({
-          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: privateKey,
-        }),
-      })
-    } catch (error) {
-      console.error("Error initializing Firebase Admin:", error)
-      return null
-    }
-  }
-
-  return getApp()
+// Desabilitar logging para evitar erros de conversão
+if (typeof process !== "undefined") {
+  // @ts-ignore
+  process.env.FIREBASE_LOGGING_DISABLED = "true"
 }
 
-// Obter a instância do Firestore Admin
+// Função para inicializar o Firebase Admin SDK com tratamento de erros
+function getFirebaseAdminApp() {
+  try {
+    const { initializeApp, getApps, getApp } = require("firebase-admin/app")
+
+    if (getApps().length === 0) {
+      try {
+        // Converter a chave privada de string para formato correto
+        const privateKey = process.env.FIREBASE_PRIVATE_KEY
+          ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n")
+          : undefined
+
+        // Verificar se as credenciais estão disponíveis
+        if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !privateKey) {
+          console.warn("Firebase Admin SDK credentials are missing. Using mock data instead.")
+          return null
+        }
+
+        // Inicializar o app
+        return initializeApp({
+          credential: cert({
+            projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: privateKey,
+          }),
+        })
+      } catch (error) {
+        console.error("Error initializing Firebase Admin:", error)
+        return null
+      }
+    }
+
+    return getApp()
+  } catch (error) {
+    console.error("Error in getFirebaseAdminApp:", error)
+    return null
+  }
+}
+
+// Obter a instância do Firestore Admin com tratamento de erros
 let _db: any = null
 
 export function getAdminDb() {
   if (!_db) {
-    const app = getFirebaseAdminApp()
-    if (app) {
-      _db = getFirestore(app)
+    try {
+      const app = getFirebaseAdminApp()
+      if (app) {
+        _db = getFirestore(app)
+      }
+    } catch (error) {
+      console.error("Error getting admin db:", error)
     }
   }
   return _db
 }
+
+// Exportar diretamente o db para compatibilidade com código existente
+export const db = getAdminDb()
 
 // Converter Firestore data para nosso tipo Product
 export function convertFirestoreProduct(id: string, data: any) {
@@ -158,57 +179,16 @@ export function convertFirestoreProduct(id: string, data: any) {
   }
 }
 
-// Mock data para quando o Firebase Admin não está disponível
-const mockProducts = [
-  {
-    id: "1",
-    name: "Anel de Prata 925 com Zircônia",
-    originalPrice: 345.0,
-    currentPrice: 199.0,
-    description: "Lindo anel de prata 925 com zircônia",
-    images: ["/silver-product.png"],
-    category: "anel",
-    features: ["Prata 925", "Com zircônia"],
-    stock: 10,
-    promotion: {
-      active: true,
-      endDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
-      discountPercentage: 42,
-      badge: "Mais Vendido",
-      type: "bestseller",
-    },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: "2",
-    name: "Brinco Argola Prata 925",
-    originalPrice: 120.0,
-    currentPrice: 99.0,
-    description: "Elegante brinco argola em prata 925",
-    images: ["/joia-de-prata.png"],
-    category: "brincos",
-    features: ["Prata 925", "Argola"],
-    stock: 15,
-    promotion: {
-      active: true,
-      endDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
-      discountPercentage: 18,
-      badge: "Novo",
-      type: "new",
-    },
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  },
-]
+// Remover os dados mock
+const mockProducts = []
 
-// Funções de acesso ao Firestore usando Admin SDK
+// Modificar a função getAllProductsAdmin para retornar uma lista vazia quando não houver produtos
 export async function getAllProductsAdmin() {
   try {
     const db = getAdminDb()
-    // Se o db não estiver disponível, retornar dados mock
+    // Se o db não estiver disponível, retornar dados mock (agora vazio)
     if (!db) {
-      console.log("Using mock products data")
+      console.log("Using mock products data (empty)")
       return mockProducts
     }
 
@@ -220,7 +200,7 @@ export async function getAllProductsAdmin() {
     // Verificar se productsSnap é válido e tem o método forEach
     if (!productsSnap || typeof productsSnap.forEach !== "function") {
       console.error("Invalid products snapshot")
-      return mockProducts
+      return []
     }
 
     // Usar try/catch para cada documento para evitar falhas em toda a operação
@@ -244,18 +224,18 @@ export async function getAllProductsAdmin() {
     return products
   } catch (error) {
     console.error("Error getting all products with admin:", error)
-    // Fallback para dados mock em caso de erro
-    return mockProducts
+    // Fallback para dados mock em caso de erro (agora vazio)
+    return []
   }
 }
 
+// Modificar a função getProductAdmin para retornar null quando não houver produto
 export async function getProductAdmin(id: string) {
   try {
     const db = getAdminDb()
     // Se o db não estiver disponível, retornar dados mock
     if (!db) {
-      const mockProduct = mockProducts.find((p) => p.id === id)
-      return mockProduct || null
+      return null
     }
 
     const productRef = db.collection("products").doc(id)
@@ -273,9 +253,7 @@ export async function getProductAdmin(id: string) {
     return null
   } catch (error) {
     console.error("Error getting product with admin:", error)
-    // Fallback para dados mock em caso de erro
-    const mockProduct = mockProducts.find((p) => p.id === id)
-    return mockProduct || null
+    return null
   }
 }
 

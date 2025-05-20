@@ -1,43 +1,40 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { isAuthenticated, getCurrentUser } from "@/services/firebase-auth"
+import { onAuthChange } from "@/services/firebase-auth"
 
 export function AuthStatusBar() {
   const [isConnected, setIsConnected] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
 
-  // Verificar estado de autenticação periodicamente
+  // Verificar estado de autenticação usando onAuthChange para tempo real
   useEffect(() => {
-    // Verificação inicial
-    checkAuthStatus()
+    const unsubscribe = onAuthChange((user) => {
+      setIsConnected(!!user)
+      setUserEmail(user?.email || null)
+    })
 
-    // Verificar a cada 10 segundos
-    const interval = setInterval(checkAuthStatus, 10000)
-
-    return () => clearInterval(interval)
+    // Cleanup function
+    return () => unsubscribe()
   }, [])
-
-  // Função para verificar o status de autenticação
-  const checkAuthStatus = () => {
-    const authenticated = isAuthenticated()
-    setIsConnected(authenticated)
-
-    const user = getCurrentUser()
-    setUserEmail(user?.email || null)
-  }
 
   if (!isConnected) {
     return (
-      <div className="bg-red-500 text-white py-2 px-4 text-center font-medium sticky top-0 z-50">
-        ❌ Firebase desconectado – login necessário
+      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded mb-4">
+        <div className="flex items-center">
+          <span className="mr-2">❌</span>
+          <span>Firebase desconectado – login necessário</span>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="bg-green-500 text-white py-2 px-4 text-center font-medium sticky top-0 z-50">
-      ✅ Conectado com Firebase {userEmail ? `(${userEmail})` : ""}
+    <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-2 rounded mb-4">
+      <div className="flex items-center">
+        <span className="mr-2">✅</span>
+        <span>Conectado com Firebase {userEmail ? `(${userEmail})` : ""}</span>
+      </div>
     </div>
   )
 }

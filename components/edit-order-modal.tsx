@@ -4,27 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { X, Plus, Minus, Save } from "lucide-react"
-
-interface OrderItem {
-  id: string
-  name: string
-  price: number
-  quantity: number
-  image: string
-}
-
-interface Order {
-  id: string
-  customer: string
-  date: string
-  items: OrderItem[]
-  paymentMethod: string
-  deliveryMethod: string
-  status: string
-  total: number
-  deliveryFee: number
-  finalTotal: number
-}
+import type { Order } from "@/services/firebase-orders"
 
 interface EditOrderModalProps {
   order: Order | null
@@ -34,6 +14,7 @@ interface EditOrderModalProps {
 
 export function EditOrderModal({ order, onClose, onSave }: EditOrderModalProps) {
   const [editedOrder, setEditedOrder] = useState<Order | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (order) {
@@ -53,7 +34,7 @@ export function EditOrderModal({ order, onClose, onSave }: EditOrderModalProps) 
 
   const handleDeliveryMethodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newDeliveryMethod = e.target.value
-    const deliveryFee = newDeliveryMethod === "Entrega local em Seara - SC" ? 10 : 0
+    const deliveryFee = newDeliveryMethod.includes("Entrega local") ? 10 : 0
     const finalTotal = editedOrder.total + deliveryFee
 
     setEditedOrder({
@@ -102,9 +83,16 @@ export function EditOrderModal({ order, onClose, onSave }: EditOrderModalProps) 
     })
   }
 
-  const handleSave = () => {
-    onSave(editedOrder)
-    onClose()
+  const handleSave = async () => {
+    try {
+      setIsSubmitting(true)
+      await onSave(editedOrder)
+      onClose()
+    } catch (error) {
+      console.error("Erro ao salvar pedido:", error)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   // Formatar preço
@@ -159,7 +147,7 @@ export function EditOrderModal({ order, onClose, onSave }: EditOrderModalProps) 
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
               >
                 <option value="Retirada no local">Retirada no local</option>
-                <option value="Entrega local em Seara - SC">Entrega local em Seara - SC (+R$10,00)</option>
+                <option value="Entrega local em Seara-SC">Entrega local em Seara - SC (+R$10,00)</option>
               </select>
             </div>
 
@@ -235,9 +223,19 @@ export function EditOrderModal({ order, onClose, onSave }: EditOrderModalProps) 
           </button>
           <button
             onClick={handleSave}
+            disabled={isSubmitting}
             className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 flex items-center"
           >
-            <Save size={16} className="mr-1" /> Salvar alterações
+            {isSubmitting ? (
+              <>
+                <span className="mr-2 h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Save size={16} className="mr-1" /> Salvar alterações
+              </>
+            )}
           </button>
         </div>
       </div>

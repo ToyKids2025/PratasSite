@@ -267,7 +267,8 @@ export async function getAllProducts(): Promise<Product[]> {
     return products
   } catch (error) {
     console.error("Error getting all products:", error)
-    throw error
+    // Retornar array vazio em caso de erro, em vez de lançar exceção
+    return []
   }
 }
 
@@ -304,7 +305,8 @@ export async function getPromotedProducts(limit = 8): Promise<Product[]> {
     return products.slice(0, limit)
   } catch (error) {
     console.error("Error getting promoted products:", error)
-    throw error
+    // Retornar array vazio em caso de erro, em vez de lançar exceção
+    return []
   }
 }
 

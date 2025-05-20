@@ -5,70 +5,17 @@ import Link from "next/link"
 import { ProductCard, type ProductProps } from "@/components/product-card"
 import { ArrowLeft } from "lucide-react"
 
+// Remover a função useFallbackData que continha produtos de exemplo
 const useFallbackData = () => {
-  // Produtos de exemplo
-  return [
-    {
-      id: 1,
-      nome: "Anel de Prata 925 com Zircônia",
-      precoOriginal: 345.0,
-      precoAtual: 199.0,
-      desconto: 42,
-      imagem: "/silver-product.png",
-      badge: "Mais Vendido",
-      promocao: true,
-    },
-    {
-      id: 2,
-      nome: "Brinco Argola Prata 925",
-      precoOriginal: 120.0,
-      precoAtual: 99.0,
-      desconto: 18,
-      imagem: "/joia-de-prata.png",
-      badge: "Novo",
-      promocao: true,
-    },
-    {
-      id: 3,
-      nome: "Colar Pingente Coração Prata 925",
-      precoOriginal: 85.0,
-      precoAtual: 75.0,
-      desconto: 12,
-      imagem: "/silver-product.png",
-    },
-    {
-      id: 4,
-      nome: "Pulseira Prata 925 com Zircônias",
-      precoOriginal: 150.0,
-      precoAtual: 129.0,
-      desconto: 14,
-      imagem: "/joia-de-prata.png",
-      promocao: true,
-    },
-    {
-      id: 5,
-      nome: "Conjunto Colar e Brinco Prata 925",
-      precoOriginal: 110.0,
-      precoAtual: 89.0,
-      desconto: 19,
-      imagem: "/silver-product.png",
-      badge: "Limitado",
-    },
-    {
-      id: 6,
-      nome: "Anel Solitário Prata 925",
-      precoOriginal: 250.0,
-      precoAtual: 199.0,
-      desconto: 20,
-      imagem: "/joia-de-prata.png",
-    },
-  ]
+  // Retornar array vazio em vez de produtos de exemplo
+  return []
 }
 
 export default function Produtos() {
   const [produtos, setProdutos] = useState<ProductProps[]>([])
   const [loading, setLoading] = useState(true)
 
+  // No useEffect, modificar para lidar melhor com a ausência de dados
   useEffect(() => {
     // Tentar buscar produtos da API
     const fetchProdutos = async () => {
@@ -76,28 +23,34 @@ export default function Produtos() {
         const response = await fetch("/api/products")
         if (response.ok) {
           const data = await response.json()
-          // Converter para o formato esperado pelo ProductCard
-          const produtosFormatados = data.map((produto: any) => ({
-            id: Number(produto.id) || Math.floor(Math.random() * 1000),
-            nome: produto.name,
-            precoOriginal: produto.originalPrice,
-            precoAtual: produto.currentPrice,
-            desconto:
-              produto.promotion?.discountPercentage ||
-              Math.round(((produto.originalPrice - produto.currentPrice) / produto.originalPrice) * 100),
-            imagem: produto.images[0] || "/silver-product.png",
-            badge: produto.promotion?.badge || null,
-            promocao: produto.promotion?.active || false,
-            fimPromocao: produto.promotion?.endDate ? new Date(produto.promotion.endDate) : undefined,
-          }))
-          setProdutos(produtosFormatados)
+          // Verificar se há dados antes de converter
+          if (Array.isArray(data) && data.length > 0) {
+            // Converter para o formato esperado pelo ProductCard
+            const produtosFormatados = data.map((produto: any) => ({
+              id: Number(produto.id) || Math.floor(Math.random() * 1000),
+              nome: produto.name,
+              precoOriginal: produto.originalPrice,
+              precoAtual: produto.currentPrice,
+              desconto:
+                produto.promotion?.discountPercentage ||
+                Math.round(((produto.originalPrice - produto.currentPrice) / produto.originalPrice) * 100),
+              imagem: produto.images[0] || "/silver-product.png",
+              badge: produto.promotion?.badge || null,
+              promocao: produto.promotion?.active || false,
+              fimPromocao: produto.promotion?.endDate ? new Date(produto.promotion.endDate) : undefined,
+            }))
+            setProdutos(produtosFormatados)
+          } else {
+            // Se não houver dados, definir array vazio
+            setProdutos([])
+          }
         } else {
-          // Fallback para dados de exemplo
-          setProdutos(useFallbackData())
+          // Fallback para array vazio
+          setProdutos([])
         }
       } catch (error) {
         console.error("Erro ao buscar produtos:", error)
-        setProdutos(useFallbackData())
+        setProdutos([])
       } finally {
         setLoading(false)
       }
