@@ -4,17 +4,26 @@ import type React from "react"
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
-import { loginWithEmailPassword } from "@/services/firebase"
-import { Eye, EyeOff, LogIn } from "lucide-react"
+import { loginWithEmailPassword } from "@/services/firebase-auth"
+import { checkFirebaseConfig } from "@/services/firebase-config"
 
-export default function AdminLogin() {
+export default function AdminLoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [configStatus, setConfigStatus] = useState<any>(null)
   const router = useRouter()
+
+  // Verificar configuração do Firebase ao carregar
+  useState(() => {
+    const status = checkFirebaseConfig()
+    setConfigStatus(status)
+
+    if (!status.isComplete) {
+      setError("Configuração do Firebase incompleta. Verifique as variáveis de ambiente.")
+    }
+  })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,15 +32,20 @@ export default function AdminLogin() {
 
     try {
       await loginWithEmailPassword(email, password)
+      console.log("Login bem-sucedido, redirecionando...")
       router.push("/admin")
     } catch (err: any) {
-      console.error("Erro de login:", err)
+      console.error("Erro no login:", err)
+
+      // Mensagens de erro mais amigáveis
       if (err.code === "auth/invalid-credential") {
-        setError("Email ou senha inválidos. Por favor, tente novamente.")
+        setError("Email ou senha incorretos. Por favor, tente novamente.")
       } else if (err.code === "auth/too-many-requests") {
         setError("Muitas tentativas de login. Por favor, tente novamente mais tarde.")
+      } else if (err.code === "auth/network-request-failed") {
+        setError("Erro de conexão. Verifique sua internet e tente novamente.")
       } else {
-        setError("Ocorreu um erro ao fazer login. Por favor, tente novamente.")
+        setError(`Erro ao fazer login: ${err.message || "Erro desconhecido"}`)
       }
     } finally {
       setLoading(false)
@@ -39,24 +53,25 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-amber-50/30">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <div className="flex flex-col items-center mb-6">
-          <Image
-            src="/logo-flor-girassol.jpeg"
-            alt="Flor de Girassol Pratas"
-            width={120}
-            height={120}
-            className="mb-4"
-          />
-          <h1 className="text-2xl font-semibold text-amber-800">Acesso Administrativo</h1>
-          <p className="text-gray-500 text-sm">Entre com suas credenciais para acessar o painel</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-amber-50/30 p-4">
+      <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md">
+        <h1 className="text-2xl font-bold mb-6 text-center text-amber-800">Login Administrativo</h1>
 
-        {error && <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md text-sm">{error}</div>}
+        {configStatus && !configStatus.isComplete && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded">
+            <p className="font-bold">Configuração do Firebase incompleta:</p>
+            <ul className="list-disc pl-5 mt-1">
+              {Object.entries(configStatus.status).map(
+                ([key, value]: [string, any]) => !value && <li key={key}>{key} não configurado</li>,
+              )}
+            </ul>
+          </div>
+        )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
+        {error && <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded">{error}</div>}
+
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
               Email
             </label>
@@ -65,59 +80,43 @@ export default function AdminLogin() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-              placeholder="seu@email.com"
+              required
             />
           </div>
 
-          <div>
+          <div className="mb-6">
             <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               Senha
             </label>
-            <div className="relative">
-              <input
-                id="password"
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-                placeholder="••••••••"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-5 w-5 text-gray-400" />
-                ) : (
-                  <Eye className="h-5 w-5 text-gray-400" />
-                )}
-              </button>
-            </div>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+              required
+            />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center items-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-amber-700 hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-amber-600 text-white py-2 px-4 rounded-md hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
           >
-            {loading ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-            ) : (
-              <LogIn className="h-5 w-5 mr-2" />
-            )}
-            Entrar
+            {loading ? "Entrando..." : "Entrar"}
           </button>
-
-          <div className="text-center mt-4">
-            <a href="#" className="text-sm text-amber-700 hover:text-amber-800">
-              Esqueceu sua senha?
-            </a>
-          </div>
         </form>
+
+        <div className="mt-4 text-sm text-gray-600">
+          <p>
+            Esta área é restrita para administradores da loja. Se você é cliente, por favor retorne à{" "}
+            <a href="/" className="text-amber-600 hover:text-amber-800">
+              página inicial
+            </a>
+            .
+          </p>
+        </div>
       </div>
     </div>
   )

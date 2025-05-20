@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { onAuthChange, logoutUser } from "@/services/firebase"
+import { onAuthChange, logoutUser } from "@/services/firebase-auth"
 
 type User = {
   uid: string

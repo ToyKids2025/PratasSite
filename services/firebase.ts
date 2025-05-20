@@ -1,6 +1,4 @@
-import { initializeApp, getApps, getApp } from "firebase/app"
 import {
-  getFirestore,
   collection,
   doc,
   setDoc,
@@ -12,56 +10,11 @@ import {
   Timestamp,
   serverTimestamp,
   orderBy,
-  connectFirestoreEmulator,
 } from "firebase/firestore"
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth"
-import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage"
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage"
 import type { Product, ProductFormData } from "@/types/product"
-
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
-}
-
-// Initialize Firebase
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp()
-const db = getFirestore(app)
-const auth = getAuth(app)
-const storage = getStorage(app)
-
-// Connect to emulators if in development
-if (process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === "true") {
-  connectFirestoreEmulator(db, "localhost", 8080)
-}
-
-// Authentication helpers
-export async function loginWithEmailPassword(email: string, password: string) {
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password)
-    return userCredential.user
-  } catch (error) {
-    console.error("Error logging in:", error)
-    throw error
-  }
-}
-
-export function getCurrentUser() {
-  return auth.currentUser
-}
-
-export function logoutUser() {
-  return signOut(auth)
-}
-
-export function onAuthChange(callback: (user: any) => void) {
-  return onAuthStateChanged(auth, callback)
-}
+import { db, storage } from "./firebase-config"
+import { getCurrentUser } from "./firebase-auth"
 
 // Storage helpers
 export async function uploadImage(file: File, path: string): Promise<string> {
@@ -235,17 +188,19 @@ export function convertFormToFirestore(formData: ProductFormData): any {
 
 // Check if user is authenticated before performing operations
 const ensureAuthenticated = () => {
-  if (!auth.currentUser) {
+  const user = getCurrentUser()
+  if (!user) {
+    console.error("Operação rejeitada: Usuário não autenticado")
     throw new Error("User not authenticated")
   }
+  return user
 }
 
 // Product CRUD operations
 export async function addProduct(productData: ProductFormData): Promise<string> {
   try {
-    // Remover a verificação de autenticação para permitir a adição de produtos
-    // mesmo sem estar autenticado (temporariamente para fins de teste)
-    // ensureAuthenticated()
+    // Verificar autenticação
+    ensureAuthenticated()
 
     const productsRef = collection(db, "products")
     const newProductRef = doc(productsRef)
