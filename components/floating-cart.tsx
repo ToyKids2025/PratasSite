@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, createContext, useContext, type ReactNode } from "react"
-import { ShoppingCart, X, Plus, Minus, ArrowRight, CreditCard, Truck } from "lucide-react"
+import { ShoppingCart, X, Plus, Minus, ArrowRight, CreditCard, Truck, Copy, Check } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { addOrder } from "@/services/firebase-orders"
@@ -209,7 +209,9 @@ export function FloatingCart() {
     deliveryMethod: false,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [whatsappUrl, setWhatsappUrl] = useState("")
+  const [orderComplete, setOrderComplete] = useState(false)
+  const [whatsappMessage, setWhatsappMessage] = useState("")
+  const [copied, setCopied] = useState(false)
 
   // Formatar preço
   const formatPrice = (price: number) => {
@@ -232,7 +234,7 @@ export function FloatingCart() {
   const generateWhatsAppMessage = (orderId: string) => {
     if (items.length === 0) return ""
 
-    // Número da loja atualizado - CORRIGIDO: remover espaços e caracteres especiais
+    // Número da loja - formato correto sem espaços ou caracteres especiais
     const storePhone = "554996824477"
 
     let message = `*NOVO PEDIDO #${orderId}*\n\n`
@@ -243,10 +245,6 @@ export function FloatingCart() {
 
     items.forEach((item) => {
       message += `• ${item.quantity}x ${item.name} - R$ ${formatPrice(item.price * item.quantity)}\n`
-      // Adicionar link da imagem
-      if (item.image && item.image !== "/placeholder.svg") {
-        message += `  Imagem: ${item.image}\n`
-      }
     })
 
     message += `\n*Subtotal:* R$ ${formatPrice(totalPrice)}`
@@ -257,7 +255,11 @@ export function FloatingCart() {
 
     message += `\n*Total:* R$ ${formatPrice(finalPrice)}\n\n`
 
-    return `https://wa.me/${storePhone}?text=${encodeURIComponent(message)}`
+    // Retornar URL do WhatsApp com a mensagem codificada
+    return {
+      url: `https://wa.me/${storePhone}?text=${encodeURIComponent(message)}`,
+      text: message,
+    }
   }
 
   // Obter texto da forma de pagamento
@@ -288,7 +290,20 @@ export function FloatingCart() {
     }
   }
 
-  // Salvar pedido no Firestore e redirecionar para WhatsApp
+  // Copiar mensagem para a área de transferência
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(whatsappMessage)
+      setCopied(true)
+      showNotification("Mensagem copiada com sucesso!", "success")
+      setTimeout(() => setCopied(false), 3000)
+    } catch (err) {
+      console.error("Erro ao copiar mensagem:", err)
+      showNotification("Erro ao copiar mensagem. Tente novamente.", "error")
+    }
+  }
+
+  // Salvar pedido no Firestore e preparar mensagem do WhatsApp
   const handleSubmitOrder = async (e: React.MouseEvent) => {
     e.preventDefault()
 
@@ -316,7 +331,7 @@ export function FloatingCart() {
         })),
         paymentMethod: getPaymentMethodText(orderData.paymentMethod),
         deliveryMethod: getDeliveryMethodText(orderData.deliveryMethod),
-        status: "aguardando_confirmacao", // Simplificado para apenas dois status
+        status: "aguardando_confirmacao",
         total: totalPrice,
         deliveryFee: deliveryFee,
         finalTotal: finalPrice,
@@ -325,24 +340,42 @@ export function FloatingCart() {
       // Salvar no Firestore
       await addOrder(orderDetails)
 
-      // Gerar URL do WhatsApp
-      const url = generateWhatsAppMessage(orderId)
-      setWhatsappUrl(url)
+      // Gerar mensagem do WhatsApp
+      const { url, text } = generateWhatsAppMessage(orderId)
 
-      // Abrir WhatsApp em uma nova janela
-      window.open(url, "_blank")
+      // Armazenar a mensagem para copiar
+      setWhatsappMessage(text)
 
-      // Limpar carrinho após envio bem-sucedido
-      clearCart()
-      setIsOpen(false)
+      // Tentar abrir o WhatsApp em uma nova aba
+      const newWindow = window.open(url, "_blank")
 
-      showNotification("Pedido enviado com sucesso!", "success")
+      // Se o navegador bloqueou a abertura da nova aba
+      if (!newWindow || newWindow.closed || typeof newWindow.closed === "undefined") {
+        // Mostrar interface alternativa
+        setOrderComplete(true)
+        showNotification("Pedido salvo! Use os botões abaixo para contatar via WhatsApp", "success")
+      } else {
+        // Limpar carrinho após envio bem-sucedido
+        clearCart()
+        setIsOpen(false)
+        showNotification("Pedido enviado com sucesso!", "success")
+      }
     } catch (error) {
       console.error("Erro ao enviar pedido:", error)
       showNotification("Erro ao enviar pedido. Tente novamente.", "error")
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  // Abrir WhatsApp Web manualmente
+  const openWhatsAppWeb = () => {
+    window.open("https://web.whatsapp.com/", "_blank")
+  }
+
+  // Abrir WhatsApp App manualmente
+  const openWhatsAppApp = () => {
+    window.open("https://wa.me/554996824477", "_blank")
   }
 
   return (
@@ -395,6 +428,56 @@ export function FloatingCart() {
                 <Link href="/produtos" className="mt-4 text-amber-700 hover:text-amber-800 font-medium">
                   Continuar comprando
                 </Link>
+              </div>
+            ) : orderComplete ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 w-full">
+                  <h3 className="text-green-800 font-medium mb-2">Pedido salvo com sucesso!</h3>
+                  <p className="text-sm text-green-700 mb-4">
+                    Seu pedido foi registrado, mas não conseguimos abrir o WhatsApp automaticamente. Por favor, use uma
+                    das opções abaixo para finalizar seu pedido.
+                  </p>
+
+                  <div className="space-y-3">
+                    <button
+                      onClick={copyToClipboard}
+                      className="w-full py-2 flex items-center justify-center rounded-md bg-green-600 hover:bg-green-700 text-white font-medium transition-colors"
+                    >
+                      {copied ? <Check size={18} className="mr-2" /> : <Copy size={18} className="mr-2" />}
+                      {copied ? "Copiado!" : "Copiar mensagem do pedido"}
+                    </button>
+
+                    <button
+                      onClick={openWhatsAppWeb}
+                      className="w-full py-2 flex items-center justify-center rounded-md bg-green-100 text-green-800 hover:bg-green-200 font-medium transition-colors"
+                    >
+                      Abrir WhatsApp Web
+                    </button>
+
+                    <button
+                      onClick={openWhatsAppApp}
+                      className="w-full py-2 flex items-center justify-center rounded-md bg-green-100 text-green-800 hover:bg-green-200 font-medium transition-colors"
+                    >
+                      Abrir WhatsApp App
+                    </button>
+
+                    <div className="text-xs text-gray-500 mt-2">
+                      <p>Após abrir o WhatsApp, envie a mensagem copiada para o número:</p>
+                      <p className="font-medium mt-1">+55 (49) 9682-4477</p>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    clearCart()
+                    setOrderComplete(false)
+                    setIsOpen(false)
+                  }}
+                  className="w-full py-2 flex items-center justify-center rounded-md border border-amber-700 text-amber-800 hover:bg-amber-50 font-medium transition-colors"
+                >
+                  Voltar para a loja
+                </button>
               </div>
             ) : (
               <>
@@ -597,53 +680,59 @@ export function FloatingCart() {
 
           {/* Rodapé com total e botão de finalizar */}
           <div className="p-4 border-t bg-amber-50">
-            <div className="space-y-2 mb-4">
-              <div className="flex justify-between">
-                <span className="text-sm">Subtotal</span>
-                <span className="text-sm font-medium">R$ {formatPrice(totalPrice)}</span>
-              </div>
-
-              {deliveryFee > 0 && (
+            {!orderComplete && (
+              <div className="space-y-2 mb-4">
                 <div className="flex justify-between">
-                  <span className="text-sm">Taxa de entrega</span>
-                  <span className="text-sm font-medium">R$ {formatPrice(deliveryFee)}</span>
+                  <span className="text-sm">Subtotal</span>
+                  <span className="text-sm font-medium">R$ {formatPrice(totalPrice)}</span>
                 </div>
-              )}
 
-              <div className="flex justify-between pt-2 border-t border-amber-200">
-                <span className="font-medium">Total</span>
-                <span className="font-bold text-amber-800">R$ {formatPrice(finalPrice)}</span>
+                {deliveryFee > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-sm">Taxa de entrega</span>
+                    <span className="text-sm font-medium">R$ {formatPrice(deliveryFee)}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between pt-2 border-t border-amber-200">
+                  <span className="font-medium">Total</span>
+                  <span className="font-bold text-amber-800">R$ {formatPrice(finalPrice)}</span>
+                </div>
               </div>
-            </div>
+            )}
 
-            <button
-              onClick={handleSubmitOrder}
-              disabled={items.length === 0 || isSubmitting}
-              className={`w-full py-3 flex items-center justify-center rounded-md ${
-                items.length === 0 || isSubmitting
-                  ? "bg-gray-300 cursor-not-allowed"
-                  : "bg-green-600 hover:bg-green-700"
-              } text-white font-medium transition-colors`}
-            >
-              {isSubmitting ? (
-                <>
-                  <span className="mr-2 h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
-                  Processando...
-                </>
-              ) : (
-                <>
-                  Finalizar via WhatsApp
-                  <ArrowRight size={18} className="ml-2" />
-                </>
-              )}
-            </button>
-            <Link
-              href="/produtos"
-              className="mt-3 w-full py-2 flex items-center justify-center rounded-md border border-amber-700 text-amber-800 hover:bg-amber-50 font-medium transition-colors"
-              onClick={() => setIsOpen(false)}
-            >
-              Continuar comprando
-            </Link>
+            {!orderComplete ? (
+              <>
+                <button
+                  onClick={handleSubmitOrder}
+                  disabled={items.length === 0 || isSubmitting}
+                  className={`w-full py-3 flex items-center justify-center rounded-md ${
+                    items.length === 0 || isSubmitting
+                      ? "bg-gray-300 cursor-not-allowed"
+                      : "bg-green-600 hover:bg-green-700"
+                  } text-white font-medium transition-colors`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <span className="mr-2 h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
+                      Processando...
+                    </>
+                  ) : (
+                    <>
+                      Finalizar via WhatsApp
+                      <ArrowRight size={18} className="ml-2" />
+                    </>
+                  )}
+                </button>
+                <Link
+                  href="/produtos"
+                  className="mt-3 w-full py-2 flex items-center justify-center rounded-md border border-amber-700 text-amber-800 hover:bg-amber-50 font-medium transition-colors"
+                  onClick={() => setIsOpen(false)}
+                >
+                  Continuar comprando
+                </Link>
+              </>
+            ) : null}
           </div>
         </div>
       </div>

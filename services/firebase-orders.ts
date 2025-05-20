@@ -7,96 +7,111 @@ import {
   query,
   where,
   orderBy,
-  Timestamp,
-  updateDoc,
   serverTimestamp,
+  updateDoc,
+  deleteDoc,
 } from "firebase/firestore"
 import { db } from "./firebase-config"
-import { updateProduct, getProduct } from "./firebase"
+import { updateProductStock } from "./firebase"
+import type { CartItem } from "@/components/floating-cart"
 
-// Tipo para os pedidos
+export type OrderStatus = "aguardando_confirmacao" | "confirmada" | "cancelada"
+
 export interface Order {
   id: string
-  customer: string
-  date: Date | Timestamp
-  items: {
-    id: string
-    name: string
-    price: number
-    quantity: number
-    image: string
-  }[]
-  paymentMethod: string
-  deliveryMethod: string
-  status: "aguardando_confirmacao" | "confirmada" // Simplificado para apenas dois status
-  total: number
+  items: CartItem[]
+  customerName: string
+  customerPhone: string
+  customerAddress?: string
+  deliveryOption: string
   deliveryFee: number
-  finalTotal: number
+  total: number
+  status: OrderStatus
+  createdAt: Date
+  updatedAt: Date
+  notes?: string
 }
 
-// Converter dados para o Firestore
-function convertOrderToFirestore(order: Order): any {
-  return {
-    id: order.id,
-    customer: order.customer,
-    date: order.date instanceof Date ? Timestamp.fromDate(order.date) : order.date,
-    items: order.items,
-    paymentMethod: order.paymentMethod,
-    deliveryMethod: order.deliveryMethod,
-    status: order.status,
-    total: order.total,
-    deliveryFee: order.deliveryFee,
-    finalTotal: order.finalTotal,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+// Converter dados do Firestore para o tipo Order
+function convertFirestoreOrder(id: string, data: any): Order {
+  // Processar datas com segurança
+  let createdAt = new Date()
+  let updatedAt = new Date()
+
+  try {
+    if (data.createdAt) {
+      if (data.createdAt instanceof Date) {
+        createdAt = data.createdAt
+      } else if (data.createdAt.toDate && typeof data.createdAt.toDate === "function") {
+        createdAt = data.createdAt.toDate()
+      } else if (data.createdAt._seconds) {
+        createdAt = new Date(data.createdAt._seconds * 1000)
+      }
+    }
+
+    if (data.updatedAt) {
+      if (data.updatedAt instanceof Date) {
+        updatedAt = data.updatedAt
+      } else if (data.updatedAt.toDate && typeof data.updatedAt.toDate === "function") {
+        updatedAt = data.updatedAt.toDate()
+      } else if (data.updatedAt._seconds) {
+        updatedAt = new Date(data.updatedAt._seconds * 1000)
+      }
+    }
+  } catch (error) {
+    console.error("Erro ao processar datas:", error)
   }
-}
 
-// Converter dados do Firestore
-function convertFirestoreToOrder(data: any): Order {
   return {
-    id: data.id,
-    customer: data.customer,
-    date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
-    items: data.items || [],
-    paymentMethod: data.paymentMethod,
-    deliveryMethod: data.deliveryMethod,
-    status: data.status,
-    total: data.total,
-    deliveryFee: data.deliveryFee,
-    finalTotal: data.finalTotal,
+    id,
+    items: Array.isArray(data.items) ? data.items : [],
+    customerName: data.customerName || "",
+    customerPhone: data.customerPhone || "",
+    customerAddress: data.customerAddress || "",
+    deliveryOption: data.deliveryOption || "retirada",
+    deliveryFee: typeof data.deliveryFee === "number" ? data.deliveryFee : 0,
+    total: typeof data.total === "number" ? data.total : 0,
+    status: data.status || "aguardando_confirmacao",
+    createdAt,
+    updatedAt,
+    notes: data.notes || "",
   }
 }
 
 // Adicionar um novo pedido
-export async function addOrder(order: Order): Promise<string> {
+export async function addOrder(orderData: Omit<Order, "id" | "createdAt" | "updatedAt">): Promise<string> {
   try {
     const ordersRef = collection(db, "orders")
-    const orderRef = doc(ordersRef, order.id)
+    const newOrderRef = doc(ordersRef)
 
-    const firestoreData = convertOrderToFirestore(order)
-    await setDoc(orderRef, firestoreData)
+    const firestoreData = {
+      ...orderData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }
 
-    return order.id
+    await setDoc(newOrderRef, firestoreData)
+    console.log(`Pedido criado com ID: ${newOrderRef.id}`)
+    return newOrderRef.id
   } catch (error) {
     console.error("Erro ao adicionar pedido:", error)
     throw error
   }
 }
 
-// Obter um pedido pelo ID
+// Obter um pedido específico
 export async function getOrder(id: string): Promise<Order | null> {
   try {
     const orderRef = doc(db, "orders", id)
     const orderSnap = await getDoc(orderRef)
 
     if (orderSnap.exists()) {
-      return convertFirestoreToOrder(orderSnap.data())
+      return convertFirestoreOrder(orderSnap.id, orderSnap.data())
     }
 
     return null
   } catch (error) {
-    console.error("Erro ao buscar pedido:", error)
+    console.error("Erro ao obter pedido:", error)
     throw error
   }
 }
@@ -105,106 +120,141 @@ export async function getOrder(id: string): Promise<Order | null> {
 export async function getAllOrders(): Promise<Order[]> {
   try {
     const ordersRef = collection(db, "orders")
-    const q = query(ordersRef, orderBy("date", "desc"))
+    const q = query(ordersRef, orderBy("createdAt", "desc"))
     const ordersSnap = await getDocs(q)
 
     const orders: Order[] = []
     ordersSnap.forEach((doc) => {
-      orders.push(convertFirestoreToOrder(doc.data()))
+      orders.push(convertFirestoreOrder(doc.id, doc.data()))
     })
 
     return orders
   } catch (error) {
-    console.error("Erro ao buscar pedidos:", error)
+    console.error("Erro ao obter todos os pedidos:", error)
     throw error
   }
 }
 
 // Obter pedidos por status
-export async function getOrdersByStatus(status: Order["status"]): Promise<Order[]> {
+export async function getOrdersByStatus(status: OrderStatus): Promise<Order[]> {
   try {
     const ordersRef = collection(db, "orders")
-    const q = query(ordersRef, where("status", "==", status), orderBy("date", "desc"))
+    const q = query(ordersRef, where("status", "==", status), orderBy("createdAt", "desc"))
     const ordersSnap = await getDocs(q)
 
     const orders: Order[] = []
     ordersSnap.forEach((doc) => {
-      orders.push(convertFirestoreToOrder(doc.data()))
+      orders.push(convertFirestoreOrder(doc.id, doc.data()))
     })
 
     return orders
   } catch (error) {
-    console.error("Erro ao buscar pedidos por status:", error)
+    console.error(`Erro ao obter pedidos com status ${status}:`, error)
     throw error
   }
 }
 
-// Atualizar status do pedido
-export async function updateOrderStatus(id: string, status: Order["status"]): Promise<void> {
+// Atualizar o status de um pedido
+export async function updateOrderStatus(id: string, status: OrderStatus, updateStock = false): Promise<void> {
   try {
     const orderRef = doc(db, "orders", id)
+
+    // Obter o pedido atual para verificar se o status está mudando para "confirmada"
+    const orderSnap = await getDoc(orderRef)
+    if (!orderSnap.exists()) {
+      throw new Error(`Pedido não encontrado com ID: ${id}`)
+    }
+
+    const currentOrder = convertFirestoreOrder(id, orderSnap.data())
+
+    // Atualizar o status do pedido
     await updateDoc(orderRef, {
       status,
       updatedAt: serverTimestamp(),
     })
-  } catch (error) {
-    console.error("Erro ao atualizar status do pedido:", error)
-    throw error
-  }
-}
 
-// Atualizar pedido
-export async function updateOrder(order: Order): Promise<void> {
-  try {
-    const orderRef = doc(db, "orders", order.id)
-    const firestoreData = convertOrderToFirestore(order)
+    // Se o pedido está sendo confirmado e updateStock é true, atualizar o estoque
+    if (updateStock && status === "confirmada" && currentOrder.status !== "confirmada") {
+      console.log(`Atualizando estoque para o pedido ${id}`)
 
-    // Não sobrescrever createdAt
-    delete firestoreData.createdAt
-
-    await updateDoc(orderRef, {
-      ...firestoreData,
-      updatedAt: serverTimestamp(),
-    })
-  } catch (error) {
-    console.error("Erro ao atualizar pedido:", error)
-    throw error
-  }
-}
-
-// Confirmar pedido e baixar estoque
-export async function confirmOrder(id: string): Promise<void> {
-  try {
-    // Obter o pedido
-    const order = await getOrder(id)
-    if (!order) {
-      throw new Error("Pedido não encontrado")
-    }
-
-    // Atualizar status do pedido
-    await updateOrderStatus(id, "confirmada")
-
-    // Baixar estoque para cada item
-    for (const item of order.items) {
-      try {
-        const product = await getProduct(item.id)
-        if (product) {
-          const newStock = Math.max(0, product.stock - item.quantity)
-          await updateProduct(item.id, {
-            ...product,
-            stock: newStock,
-          })
-          console.log(`Estoque atualizado para o produto ${item.id}: ${product.stock} -> ${newStock}`)
-        } else {
-          console.warn(`Produto não encontrado: ${item.id}`)
+      // Atualizar o estoque de cada item do pedido
+      for (const item of currentOrder.items) {
+        if (item.id && item.quantity) {
+          try {
+            await updateProductStock(item.id, item.quantity)
+          } catch (error) {
+            console.error(`Erro ao atualizar estoque do produto ${item.id}:`, error)
+          }
         }
-      } catch (itemError) {
-        console.error(`Erro ao atualizar estoque do item ${item.id}:`, itemError)
-        // Continuar com os próximos itens mesmo se houver erro
       }
     }
   } catch (error) {
-    console.error("Erro ao confirmar pedido:", error)
+    console.error(`Erro ao atualizar status do pedido ${id}:`, error)
+    throw error
+  }
+}
+
+// Atualizar um pedido
+export async function updateOrder(id: string, orderData: Partial<Order>): Promise<void> {
+  try {
+    const orderRef = doc(db, "orders", id)
+
+    // Remover campos que não devem ser atualizados diretamente
+    const { id: _, createdAt, updatedAt, ...updateData } = orderData as any
+
+    await updateDoc(orderRef, {
+      ...updateData,
+      updatedAt: serverTimestamp(),
+    })
+  } catch (error) {
+    console.error(`Erro ao atualizar pedido ${id}:`, error)
+    throw error
+  }
+}
+
+// Excluir um pedido
+export async function deleteOrder(id: string): Promise<void> {
+  try {
+    console.log(`Excluindo pedido com ID: ${id}`)
+    const orderRef = doc(db, "orders", id)
+
+    // Verificar se o pedido existe antes de excluir
+    const orderSnap = await getDoc(orderRef)
+    if (!orderSnap.exists()) {
+      throw new Error(`Pedido não encontrado com ID: ${id}`)
+    }
+
+    await deleteDoc(orderRef)
+    console.log(`Pedido ${id} excluído com sucesso`)
+  } catch (error) {
+    console.error(`Erro ao excluir pedido ${id}:`, error)
+    throw error
+  }
+}
+
+// Confirmar um pedido
+export async function confirmOrder(id: string): Promise<void> {
+  try {
+    console.log(`Confirmando pedido com ID: ${id}`)
+
+    // Obter o pedido atual
+    const order = await getOrder(id)
+    if (!order) {
+      throw new Error(`Pedido não encontrado com ID: ${id}`)
+    }
+
+    // Verificar se o pedido já está confirmado
+    if (order.status === "confirmada") {
+      console.log(`Pedido ${id} já está confirmado`)
+      return
+    }
+
+    // Atualizar o status do pedido para "confirmada"
+    await updateOrderStatus(id, "confirmada", true)
+
+    console.log(`Pedido ${id} confirmado com sucesso e estoque atualizado`)
+  } catch (error) {
+    console.error(`Erro ao confirmar pedido ${id}:`, error)
     throw error
   }
 }

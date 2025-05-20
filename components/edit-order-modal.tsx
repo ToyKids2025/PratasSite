@@ -1,255 +1,200 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { X, Plus, Minus, Save } from "lucide-react"
-import type { Order } from "@/services/firebase-orders"
+import { useState } from "react"
+import { X } from "lucide-react"
+import { updateOrderStatus, deleteOrder } from "@/services/firebase-orders"
+import { useNotification } from "./notification"
 
 interface EditOrderModalProps {
-  order: Order | null
+  order: any
+  isOpen: boolean
   onClose: () => void
-  onSave: (updatedOrder: Order) => void
+  onUpdate: () => void
 }
 
-export function EditOrderModal({ order, onClose, onSave }: EditOrderModalProps) {
-  const [editedOrder, setEditedOrder] = useState<Order | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  useEffect(() => {
-    if (order) {
-      setEditedOrder({ ...order })
-    }
-  }, [order])
-
-  if (!editedOrder) return null
-
-  const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditedOrder({ ...editedOrder, customer: e.target.value })
-  }
-
-  const handlePaymentMethodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setEditedOrder({ ...editedOrder, paymentMethod: e.target.value })
-  }
-
-  const handleDeliveryMethodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newDeliveryMethod = e.target.value
-    const deliveryFee = newDeliveryMethod.includes("Entrega local") ? 10 : 0
-    const finalTotal = editedOrder.total + deliveryFee
-
-    setEditedOrder({
-      ...editedOrder,
-      deliveryMethod: newDeliveryMethod,
-      deliveryFee,
-      finalTotal,
-    })
-  }
-
-  const handleQuantityChange = (itemId: string, newQuantity: number) => {
-    if (newQuantity < 1) return
-
-    const updatedItems = editedOrder.items.map((item) =>
-      item.id === itemId ? { ...item, quantity: newQuantity } : item,
-    )
-
-    const total = updatedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-    const finalTotal = total + editedOrder.deliveryFee
-
-    setEditedOrder({
-      ...editedOrder,
-      items: updatedItems,
-      total,
-      finalTotal,
-    })
-  }
-
-  const handleRemoveItem = (itemId: string) => {
-    const updatedItems = editedOrder.items.filter((item) => item.id !== itemId)
-
-    if (updatedItems.length === 0) {
-      // Se não houver mais itens, fechar o modal
-      onClose()
-      return
-    }
-
-    const total = updatedItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-    const finalTotal = total + editedOrder.deliveryFee
-
-    setEditedOrder({
-      ...editedOrder,
-      items: updatedItems,
-      total,
-      finalTotal,
-    })
-  }
-
-  const handleSave = async () => {
-    try {
-      setIsSubmitting(true)
-      await onSave(editedOrder)
-      onClose()
-    } catch (error) {
-      console.error("Erro ao salvar pedido:", error)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+export function EditOrderModal({ order, isOpen, onClose, onUpdate }: EditOrderModalProps) {
+  const [status, setStatus] = useState(order.status || "aguardando_confirmacao")
+  const [isLoading, setIsLoading] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const { showNotification } = useNotification()
 
   // Formatar preço
   const formatPrice = (price: number) => {
     return price.toFixed(2).replace(".", ",")
   }
 
+  // Formatar data
+  const formatDate = (date: Date) => {
+    return new Date(date).toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  // Atualizar status do pedido
+  const handleUpdateStatus = async () => {
+    try {
+      setIsLoading(true)
+
+      // Determinar se deve atualizar o estoque
+      const shouldUpdateStock = status === "confirmada" && order.status !== "confirmada"
+
+      await updateOrderStatus(order.firestoreId, status, shouldUpdateStock)
+
+      showNotification("Status do pedido atualizado com sucesso!", "success")
+      onUpdate()
+      onClose()
+    } catch (error) {
+      console.error("Erro ao atualizar status:", error)
+      showNotification("Erro ao atualizar status do pedido.", "error")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Excluir pedido
+  const handleDeleteOrder = async () => {
+    if (!window.confirm("Tem certeza que deseja excluir este pedido? Esta ação não pode ser desfeita.")) {
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+      await deleteOrder(order.firestoreId)
+      showNotification("Pedido excluído com sucesso!", "success")
+      onUpdate()
+      onClose()
+    } catch (error) {
+      console.error("Erro ao excluir pedido:", error)
+      showNotification("Erro ao excluir pedido.", "error")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
+  if (!isOpen) return null
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold text-gray-800">Editar Pedido #{editedOrder.id}</h2>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
+      <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-4 border-b flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Detalhes do Pedido #{order.id}</h2>
+          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 transition-colors">
             <X size={20} />
           </button>
         </div>
 
-        <div className="p-4 overflow-y-auto max-h-[calc(90vh-8rem)]">
-          <div className="space-y-4">
-            {/* Nome do cliente */}
+        <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome do cliente</label>
-              <input
-                type="text"
-                value={editedOrder.customer}
-                onChange={handleCustomerNameChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-              />
+              <p className="text-sm text-gray-500">Cliente</p>
+              <p className="font-medium">{order.customer}</p>
             </div>
-
-            {/* Forma de pagamento */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Forma de pagamento</label>
-              <select
-                value={editedOrder.paymentMethod}
-                onChange={handlePaymentMethodChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="PIX">PIX</option>
-                <option value="Cartão de crédito">Cartão de crédito</option>
-                <option value="Cartão de débito">Cartão de débito</option>
-                <option value="Dinheiro">Dinheiro</option>
-              </select>
+              <p className="text-sm text-gray-500">Data</p>
+              <p className="font-medium">{formatDate(order.date)}</p>
             </div>
-
-            {/* Forma de entrega */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Forma de entrega</label>
-              <select
-                value={editedOrder.deliveryMethod}
-                onChange={handleDeliveryMethodChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="Retirada no local">Retirada no local</option>
-                <option value="Entrega local em Seara-SC">Entrega local em Seara - SC (+R$10,00)</option>
-              </select>
+              <p className="text-sm text-gray-500">Forma de Pagamento</p>
+              <p className="font-medium">{order.paymentMethod}</p>
             </div>
-
-            {/* Status do pedido */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status do pedido</label>
-              <select
-                value={editedOrder.status}
-                onChange={(e) => setEditedOrder({ ...editedOrder, status: e.target.value as Order["status"] })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                <option value="aguardando_confirmacao">Aguardando Confirmação</option>
-                <option value="confirmada">Confirmada</option>
-              </select>
-            </div>
-
-            {/* Itens do pedido */}
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">Itens do pedido</h3>
-              <div className="space-y-3">
-                {editedOrder.items.map((item) => (
-                  <div key={item.id} className="flex items-center border rounded-md p-2">
-                    <div className="w-12 h-12 bg-gray-100 rounded overflow-hidden">
-                      <img
-                        src={item.image || "/placeholder.svg"}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <div className="ml-3 flex-1">
-                      <p className="text-sm font-medium">{item.name}</p>
-                      <p className="text-xs text-gray-500">R$ {formatPrice(item.price)}</p>
-                    </div>
-                    <div className="flex items-center">
-                      <button
-                        onClick={() => handleQuantityChange(item.id, item.quantity - 1)}
-                        className="p-1 rounded-full border border-gray-300 hover:bg-gray-100"
-                      >
-                        <Minus size={14} />
-                      </button>
-                      <span className="mx-2 w-8 text-center">{item.quantity}</span>
-                      <button
-                        onClick={() => handleQuantityChange(item.id, item.quantity + 1)}
-                        className="p-1 rounded-full border border-gray-300 hover:bg-gray-100"
-                      >
-                        <Plus size={14} />
-                      </button>
-                      <button
-                        onClick={() => handleRemoveItem(item.id)}
-                        className="ml-3 p-1 text-red-500 hover:text-red-700"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Resumo de valores */}
-            <div className="mt-4 pt-4 border-t">
-              <div className="flex justify-between mb-1">
-                <span className="text-sm text-gray-600">Subtotal:</span>
-                <span className="text-sm font-medium">R$ {formatPrice(editedOrder.total)}</span>
-              </div>
-              {editedOrder.deliveryFee > 0 && (
-                <div className="flex justify-between mb-1">
-                  <span className="text-sm text-gray-600">Taxa de entrega:</span>
-                  <span className="text-sm font-medium">R$ {formatPrice(editedOrder.deliveryFee)}</span>
-                </div>
-              )}
-              <div className="flex justify-between font-medium">
-                <span>Total:</span>
-                <span>R$ {formatPrice(editedOrder.finalTotal)}</span>
-              </div>
+              <p className="text-sm text-gray-500">Forma de Entrega</p>
+              <p className="font-medium">{order.deliveryMethod}</p>
             </div>
           </div>
-        </div>
 
-        <div className="p-4 border-t bg-gray-50 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 mr-2 hover:bg-gray-100"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={isSubmitting}
-            className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 flex items-center"
-          >
-            {isSubmitting ? (
-              <>
-                <span className="mr-2 h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
-                Salvando...
-              </>
-            ) : (
-              <>
-                <Save size={16} className="mr-1" /> Salvar alterações
-              </>
+          <div className="mb-4">
+            <h3 className="font-medium mb-2">Itens do Pedido</h3>
+            <div className="border rounded-md overflow-hidden">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Produto
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Qtd
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Preço
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {order.items.map((item: any, index: number) => (
+                    <tr key={index}>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm">{item.name}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm">{item.quantity}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-right">R$ {formatPrice(item.price)}</td>
+                      <td className="px-4 py-2 whitespace-nowrap text-sm text-right">
+                        R$ {formatPrice(item.price * item.quantity)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-6">
+            <div className="flex justify-between">
+              <span>Subtotal</span>
+              <span className="font-medium">R$ {formatPrice(order.total)}</span>
+            </div>
+            {order.deliveryFee > 0 && (
+              <div className="flex justify-between">
+                <span>Taxa de entrega</span>
+                <span className="font-medium">R$ {formatPrice(order.deliveryFee)}</span>
+              </div>
             )}
-          </button>
+            <div className="flex justify-between pt-2 border-t">
+              <span className="font-medium">Total</span>
+              <span className="font-bold">R$ {formatPrice(order.finalTotal)}</span>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Status do Pedido</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as "aguardando_confirmacao" | "confirmada")}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-amber-500"
+              disabled={isLoading}
+            >
+              <option value="aguardando_confirmacao">Aguardando Confirmação</option>
+              <option value="confirmada">Confirmada</option>
+            </select>
+            {status === "confirmada" && order.status !== "confirmada" && (
+              <p className="mt-1 text-xs text-amber-600">
+                Ao confirmar este pedido, o estoque dos produtos será automaticamente atualizado.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={handleUpdateStatus}
+              disabled={isLoading}
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoading ? "Salvando..." : "Salvar Alterações"}
+            </button>
+            <button
+              onClick={handleDeleteOrder}
+              disabled={isDeleting}
+              className="flex-1 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isDeleting ? "Excluindo..." : "Excluir Pedido"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

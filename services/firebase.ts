@@ -10,6 +10,8 @@ import {
   Timestamp,
   serverTimestamp,
   orderBy,
+  updateDoc,
+  increment,
 } from "firebase/firestore"
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage"
 import type { Product, ProductFormData } from "@/types/product"
@@ -305,6 +307,37 @@ export async function updateProduct(id: string, productData: ProductFormData): P
     await setDoc(productRef, firestoreData, { merge: true })
   } catch (error) {
     console.error("Error updating product:", error)
+    throw error
+  }
+}
+
+// Nova função para atualizar o estoque de um produto
+export async function updateProductStock(productId: string, quantity: number): Promise<void> {
+  try {
+    console.log(`Atualizando estoque do produto ${productId} em ${quantity} unidades`)
+
+    // Verificar se o ID do produto é válido
+    if (!productId || typeof productId !== "string") {
+      throw new Error(`ID de produto inválido: ${productId}`)
+    }
+
+    const productRef = doc(db, "products", productId)
+
+    // Verificar se o produto existe
+    const productSnap = await getDoc(productRef)
+    if (!productSnap.exists()) {
+      throw new Error(`Produto não encontrado com ID: ${productId}`)
+    }
+
+    // Atualizar o estoque usando increment para evitar condições de corrida
+    await updateDoc(productRef, {
+      stock: increment(-quantity), // Decrementa o estoque pela quantidade vendida
+      updatedAt: serverTimestamp(),
+    })
+
+    console.log(`Estoque do produto ${productId} atualizado com sucesso`)
+  } catch (error) {
+    console.error(`Erro ao atualizar estoque do produto ${productId}:`, error)
     throw error
   }
 }
